@@ -1,0 +1,13 @@
+node_modules/
+dist/
+target/
+repomix-output.xml
+.env
+.DS_Store
+*.log
+backend/node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+backend/.venv/
+backend/__pycache__/

@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+websockets
+google-genai
+python-dotenv
+numpy
+scipy
+cartesia
+playwright

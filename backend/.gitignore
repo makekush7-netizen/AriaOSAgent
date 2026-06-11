@@ -1,0 +1,10 @@
+.env
+__pycache__/
+*.pyc
+*.db
+*.sqlite
+*.sqlite3
+venv/
+browser_profile/
+screenshot.png
+findings/

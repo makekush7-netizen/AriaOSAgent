@@ -1,0 +1,1046 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ARIA — Your Desktop Companion</title>
+    <meta name="description" content="ARIA is a desktop companion that lives on your screen, automates your boring tasks, and actually has a personality.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Syne:wght@600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        /* ===== ARIA DESIGN SYSTEM ===== */
+        :root {
+            /* Backgrounds */
+            --bg-deepest: #0E0D0C;
+            --surface: #1A1917;
+            --surface-raised: #242220;
+            --border: #2E2C29;
+            --border-subtle: #1F1E1C;
+
+            /* Text */
+            --text-primary: #F0EDE8;
+            --text-secondary: #9E9B96;
+            --text-tertiary: #5C5A56;
+            --text-disabled: #3A3835;
+
+            /* Accent — warm amber */
+            --accent: #C8956C;
+            --accent-hover: #D4A882;
+            --accent-muted: #3D2E24;
+
+            /* Semantic */
+            --success: #6A9E72;
+            --warning: #C8A84B;
+            --danger: #A85C5C;
+            --info: #5C82A8;
+
+            /* Motion */
+            --transition-default: 200ms ease;
+            --transition-slow: 400ms ease;
+            --panel-slide: 250ms cubic-bezier(0.16, 1, 0.3, 1);
+
+            /* Spacing */
+            --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px;
+            --sp-6: 24px; --sp-8: 32px; --sp-12: 48px; --sp-16: 64px;
+
+            /* Radius */
+            --r-sm: 4px; --r-md: 8px; --r-lg: 12px; --r-xl: 20px; --r-pill: 999px;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: var(--bg-deepest);
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            color: var(--text-primary);
+            overflow: hidden;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        /* ===== LOADING SCREEN ===== */
+        #loading-screen {
+            position: fixed; inset: 0; z-index: 9999;
+            background: var(--bg-deepest);
+            display: flex; flex-direction: column;
+            justify-content: center; align-items: center;
+            transition: opacity 0.6s ease;
+        }
+        #loading-screen.hidden { opacity: 0; pointer-events: none; }
+
+        .loader-avatar-name {
+            font-family: 'Syne', sans-serif;
+            font-size: 40px; font-weight: 800;
+            color: var(--accent);
+            letter-spacing: 6px;
+            margin-bottom: var(--sp-8);
+            animation: pulse-glow 2s ease-in-out infinite;
+        }
+        @keyframes pulse-glow {
+            0%, 100% { opacity: 0.7; }
+            50% { opacity: 1; }
+        }
+
+        .loader-bar-track {
+            width: 260px; height: 3px;
+            background: var(--border);
+            border-radius: var(--r-pill);
+            overflow: hidden;
+        }
+        .loader-bar-fill {
+            height: 100%; width: 0%;
+            background: var(--accent);
+            border-radius: var(--r-pill);
+            transition: width 0.3s ease;
+        }
+        .loader-status {
+            margin-top: var(--sp-3);
+            font-size: 12px; color: var(--text-tertiary);
+            letter-spacing: 2px; text-transform: uppercase;
+        }
+
+        /* ===== THREE.JS CANVAS ===== */
+        #avatar-canvas {
+            position: fixed; inset: 0;
+            z-index: 1;
+        }
+
+        /* ===== ONBOARDING OVERLAY ===== */
+        #onboarding {
+            position: fixed; inset: 0; z-index: 100;
+            background: rgba(14, 13, 12, 0.85);
+            backdrop-filter: blur(12px);
+            display: flex; justify-content: center; align-items: center;
+            opacity: 0; pointer-events: none;
+            transition: opacity var(--transition-slow);
+        }
+        #onboarding.visible { opacity: 1; pointer-events: auto; }
+
+        .onboarding-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--r-xl);
+            padding: var(--sp-12) var(--sp-12);
+            max-width: 420px; width: 90%;
+            text-align: center;
+        }
+        .onboarding-card h2 {
+            font-family: 'Syne', sans-serif;
+            font-size: 28px; font-weight: 700;
+            color: var(--accent);
+            margin-bottom: var(--sp-2);
+        }
+        .onboarding-card p {
+            color: var(--text-secondary);
+            font-size: 14px; line-height: 1.6;
+            margin-bottom: var(--sp-6);
+        }
+        .onboarding-input {
+            width: 100%; padding: var(--sp-3) var(--sp-4);
+            background: var(--surface-raised);
+            border: 1px solid var(--border);
+            border-radius: var(--r-xl);
+            color: var(--text-primary);
+            font-family: 'Inter', sans-serif;
+            font-size: 15px; outline: none;
+            transition: border-color var(--transition-default);
+        }
+        .onboarding-input:focus { border-color: var(--accent); }
+        .onboarding-input::placeholder { color: var(--text-tertiary); }
+
+        .onboarding-btn {
+            margin-top: var(--sp-4);
+            padding: var(--sp-3) var(--sp-8);
+            background: var(--accent);
+            border: none; border-radius: var(--r-pill);
+            color: var(--bg-deepest);
+            font-family: 'Inter', sans-serif;
+            font-size: 14px; font-weight: 600;
+            cursor: pointer;
+            transition: background var(--transition-default), transform var(--transition-default);
+        }
+        .onboarding-btn:hover { background: var(--accent-hover); transform: translateY(-1px); }
+
+        /* ===== STATUS PILL ===== */
+        #status-pill {
+            position: fixed; top: var(--sp-4); left: 50%;
+            transform: translateX(-50%);
+            z-index: 50;
+            background: var(--surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--r-pill);
+            padding: var(--sp-2) var(--sp-4);
+            font-size: 11px; color: var(--text-secondary);
+            letter-spacing: 1px; text-transform: uppercase;
+            opacity: 0; transition: opacity var(--transition-default);
+            pointer-events: none;
+        }
+        #status-pill.visible { opacity: 1; }
+        #status-pill .dot {
+            display: inline-block; width: 6px; height: 6px;
+            border-radius: 50%; background: var(--success);
+            margin-right: var(--sp-2); vertical-align: middle;
+            animation: blink-dot 1.5s ease-in-out infinite;
+        }
+        @keyframes blink-dot {
+            0%, 100% { opacity: 1; } 50% { opacity: 0.3; }
+        }
+
+        /* ===== CHAT PANEL ===== */
+        #chat-panel {
+            position: fixed; right: 0; top: 0; bottom: 0;
+            width: 380px; max-width: 90vw;
+            z-index: 60;
+            background: rgba(26, 25, 23, 0.92);
+            backdrop-filter: blur(20px);
+            border-left: 1px solid var(--border-subtle);
+            display: flex; flex-direction: column;
+            transform: translateX(100%);
+            transition: transform var(--panel-slide);
+        }
+        #chat-panel.open { transform: translateX(0); }
+
+        .chat-header {
+            padding: var(--sp-4) var(--sp-6);
+            border-bottom: 1px solid var(--border-subtle);
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .chat-header h3 {
+            font-family: 'Syne', sans-serif;
+            font-size: 16px; font-weight: 700;
+            color: var(--accent);
+        }
+        .chat-close-btn {
+            width: 28px; height: 28px;
+            background: var(--surface-raised);
+            border: 1px solid var(--border);
+            border-radius: var(--r-md);
+            color: var(--text-secondary);
+            cursor: pointer; font-size: 14px;
+            display: flex; align-items: center; justify-content: center;
+            transition: all var(--transition-default);
+        }
+        .chat-close-btn:hover { border-color: var(--accent); color: var(--text-primary); }
+
+        .chat-messages {
+            flex: 1; overflow-y: auto;
+            padding: var(--sp-4) var(--sp-6);
+            display: flex; flex-direction: column; gap: var(--sp-3);
+        }
+        .chat-messages::-webkit-scrollbar { width: 4px; }
+        .chat-messages::-webkit-scrollbar-track { background: transparent; }
+        .chat-messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: var(--r-pill); }
+
+        .msg {
+            max-width: 85%; padding: var(--sp-3) var(--sp-4);
+            border-radius: var(--r-lg);
+            font-size: 13px; line-height: 1.6;
+            animation: msg-in 200ms ease;
+        }
+        @keyframes msg-in {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .msg.user {
+            align-self: flex-end;
+            background: var(--accent-muted);
+            color: var(--text-primary);
+            border-bottom-right-radius: var(--r-sm);
+        }
+        .msg.aria {
+            align-self: flex-start;
+            background: var(--surface-raised);
+            color: var(--text-primary);
+            border-bottom-left-radius: var(--r-sm);
+        }
+        .msg.aria .aria-label {
+            font-size: 10px; color: var(--accent);
+            font-weight: 600; letter-spacing: 1px;
+            text-transform: uppercase; margin-bottom: 4px;
+        }
+        .msg.system {
+            align-self: center;
+            background: transparent;
+            color: var(--text-tertiary);
+            font-size: 11px; text-align: center;
+        }
+
+        .chat-input-area {
+            padding: var(--sp-4) var(--sp-6);
+            border-top: 1px solid var(--border-subtle);
+            display: flex; gap: var(--sp-2); align-items: center;
+        }
+        #chat-input {
+            flex: 1; padding: var(--sp-3) var(--sp-4);
+            background: var(--surface-raised);
+            border: 1px solid var(--border);
+            border-radius: var(--r-xl);
+            color: var(--text-primary);
+            font-family: 'Inter', sans-serif;
+            font-size: 13px; outline: none;
+            transition: border-color var(--transition-default);
+        }
+        #chat-input:focus { border-color: var(--accent); }
+        #chat-input::placeholder { color: var(--text-tertiary); }
+
+        .chat-action-btn {
+            width: 36px; height: 36px;
+            border-radius: 50%;
+            border: 1px solid var(--border);
+            background: var(--surface-raised);
+            color: var(--text-secondary);
+            cursor: pointer; font-size: 16px;
+            display: flex; align-items: center; justify-content: center;
+            transition: all var(--transition-default);
+            flex-shrink: 0;
+        }
+        .chat-action-btn:hover { border-color: var(--accent); color: var(--accent); }
+        .chat-action-btn.recording {
+            border-color: var(--danger);
+            color: var(--danger);
+            animation: pulse-rec 1s ease-in-out infinite;
+        }
+        @keyframes pulse-rec {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(168, 92, 92, 0.4); }
+            50% { box-shadow: 0 0 0 8px rgba(168, 92, 92, 0); }
+        }
+
+        /* ===== PERMISSION CARD ===== */
+        #permission-overlay {
+            position: fixed; inset: 0; z-index: 200;
+            background: rgba(14, 13, 12, 0.7);
+            backdrop-filter: blur(6px);
+            display: flex; justify-content: center; align-items: center;
+            opacity: 0; pointer-events: none;
+            transition: opacity var(--transition-default);
+        }
+        #permission-overlay.visible { opacity: 1; pointer-events: auto; }
+
+        .perm-card {
+            background: var(--surface);
+            border: 1px solid var(--accent);
+            border-radius: var(--r-xl);
+            padding: var(--sp-8);
+            max-width: 400px; width: 90%;
+            animation: perm-in 200ms ease;
+        }
+        @keyframes perm-in {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        .perm-card h3 {
+            font-family: 'Syne', sans-serif;
+            font-size: 18px; font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: var(--sp-2);
+        }
+        .perm-card p {
+            color: var(--text-secondary);
+            font-size: 13px; line-height: 1.6;
+            margin-bottom: var(--sp-6);
+        }
+        .perm-timer-track {
+            width: 100%; height: 3px;
+            background: var(--border);
+            border-radius: var(--r-pill);
+            margin-bottom: var(--sp-4);
+            overflow: hidden;
+        }
+        .perm-timer-fill {
+            height: 100%; width: 100%;
+            background: var(--accent);
+            border-radius: var(--r-pill);
+            transition: width 30s linear;
+        }
+        .perm-actions {
+            display: flex; gap: var(--sp-3); justify-content: flex-end;
+        }
+        .perm-btn {
+            padding: var(--sp-2) var(--sp-6);
+            border-radius: var(--r-md);
+            font-family: 'Inter', sans-serif;
+            font-size: 13px; font-weight: 600;
+            cursor: pointer; border: none;
+            transition: all var(--transition-default);
+        }
+        .perm-btn.deny {
+            background: var(--surface-raised);
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+        }
+        .perm-btn.deny:hover { border-color: var(--danger); color: var(--danger); }
+        .perm-btn.allow {
+            background: var(--accent);
+            color: var(--bg-deepest);
+        }
+        .perm-btn.allow:hover { background: var(--accent-hover); }
+
+        /* ===== BOTTOM CONTROLS ===== */
+        #bottom-controls {
+            position: fixed; bottom: var(--sp-6); left: 50%;
+            transform: translateX(-50%);
+            z-index: 50;
+            display: flex; gap: var(--sp-3); align-items: center;
+        }
+
+        .ctrl-btn {
+            padding: var(--sp-2) var(--sp-4);
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--r-pill);
+            color: var(--text-secondary);
+            font-family: 'Inter', sans-serif;
+            font-size: 12px; font-weight: 500;
+            cursor: pointer;
+            transition: all var(--transition-default);
+            display: flex; align-items: center; gap: var(--sp-2);
+        }
+        .ctrl-btn:hover {
+            border-color: var(--accent);
+            color: var(--text-primary);
+            transform: translateY(-2px);
+        }
+        .ctrl-btn.active {
+            background: var(--accent-muted);
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+        .ctrl-btn svg { width: 14px; height: 14px; }
+
+        /* ===== EXPRESSION BUTTONS ===== */
+        #expression-row {
+            position: fixed; bottom: 60px; left: 50%;
+            transform: translateX(-50%);
+            z-index: 50;
+            display: flex; gap: var(--sp-2);
+            opacity: 0; pointer-events: none;
+            transition: opacity var(--transition-default);
+        }
+        #expression-row.visible { opacity: 1; pointer-events: auto; }
+
+        .expr-btn {
+            width: 36px; height: 36px;
+            border-radius: 50%;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            font-size: 16px; cursor: pointer;
+            transition: all var(--transition-default);
+            display: flex; align-items: center; justify-content: center;
+        }
+        .expr-btn:hover { border-color: var(--accent); transform: scale(1.15); }
+        .expr-btn.active { border-color: var(--accent); background: var(--accent-muted); }
+
+        /* ===== ANIMATION TOGGLE ===== */
+        #anim-row {
+            position: fixed; bottom: 110px; left: 50%;
+            transform: translateX(-50%);
+            z-index: 50;
+            display: flex; gap: var(--sp-2);
+            opacity: 0; pointer-events: none;
+            transition: opacity var(--transition-default);
+        }
+        #anim-row.visible { opacity: 1; pointer-events: auto; }
+    </style>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.154.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.154.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+<body>
+
+    <!-- LOADING SCREEN -->
+    <div id="loading-screen">
+        <div class="loader-avatar-name">ARIA</div>
+        <div class="loader-bar-track">
+            <div class="loader-bar-fill" id="loader-fill"></div>
+        </div>
+        <div class="loader-status" id="loader-status">Initializing...</div>
+    </div>
+
+    <!-- ONBOARDING -->
+    <div id="onboarding">
+        <div class="onboarding-card">
+            <h2>Hi, I'm ARIA</h2>
+            <p>Your desktop companion. I can chat, automate tasks, and keep you company. What should I call you?</p>
+            <input type="text" class="onboarding-input" id="onboard-name" placeholder="Your name..." autocomplete="off">
+            <br>
+            <button class="onboarding-btn" id="onboard-submit">Let's Go</button>
+        </div>
+    </div>
+
+    <!-- STATUS PILL -->
+    <div id="status-pill"><span class="dot"></span><span id="status-text">Idle</span></div>
+
+    <!-- CHAT PANEL -->
+    <div id="chat-panel">
+        <div class="chat-header">
+            <h3>ARIA</h3>
+            <button class="chat-close-btn" id="chat-close">✕</button>
+        </div>
+        <div class="chat-messages" id="chat-messages"></div>
+        <div class="chat-input-area">
+            <input type="text" id="chat-input" placeholder="Say something..." autocomplete="off">
+            <button class="chat-action-btn" id="mic-btn" title="Voice input">🎤</button>
+            <button class="chat-action-btn" id="send-btn" title="Send">➤</button>
+        </div>
+    </div>
+
+    <!-- PERMISSION CARD -->
+    <div id="permission-overlay">
+        <div class="perm-card">
+            <h3 id="perm-title">Action Required</h3>
+            <p id="perm-desc">ARIA wants to perform an action.</p>
+            <div class="perm-timer-track"><div class="perm-timer-fill" id="perm-timer"></div></div>
+            <div class="perm-actions">
+                <button class="perm-btn deny" id="perm-deny">Deny</button>
+                <button class="perm-btn allow" id="perm-allow">Allow</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- EXPRESSION ROW -->
+    <div id="expression-row">
+        <button class="expr-btn active" data-expr="neutral" title="Neutral">😐</button>
+        <button class="expr-btn" data-expr="happy" title="Happy">😊</button>
+        <button class="expr-btn" data-expr="sad" title="Sad">😢</button>
+        <button class="expr-btn" data-expr="angry" title="Angry">😠</button>
+        <button class="expr-btn" data-expr="surprised" title="Surprised">😲</button>
+    </div>
+
+    <!-- ANIMATION ROW -->
+    <div id="anim-row">
+        <button class="ctrl-btn active" data-anim="idle">Idle</button>
+        <button class="ctrl-btn" data-anim="talking">Talking</button>
+    </div>
+
+    <!-- BOTTOM CONTROLS -->
+    <div id="bottom-controls">
+        <button class="ctrl-btn" id="btn-chat">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            Chat
+        </button>
+        <button class="ctrl-btn" id="btn-emotes">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+            Emotes
+        </button>
+        <button class="ctrl-btn" id="btn-anims">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            Anims
+        </button>
+    </div>
+
+    <!-- ===== MAIN SCRIPT ===== -->
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { VRMLoaderPlugin } from 'https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@2.0.0/lib/three-vrm.module.min.js';
+
+        // ===== BONE MAP =====
+        const mixamoVRMRigMap = {
+            mixamorigHips: 'hips', mixamorigSpine: 'spine',
+            mixamorigSpine1: 'chest', mixamorigSpine2: 'upperChest',
+            mixamorigNeck: 'neck', mixamorigHead: 'head',
+            mixamorigLeftShoulder: 'leftShoulder', mixamorigLeftArm: 'leftUpperArm',
+            mixamorigLeftForeArm: 'leftLowerArm', mixamorigLeftHand: 'leftHand',
+            mixamorigRightShoulder: 'rightShoulder', mixamorigRightArm: 'rightUpperArm',
+            mixamorigRightForeArm: 'rightLowerArm', mixamorigRightHand: 'rightHand',
+            mixamorigLeftUpLeg: 'leftUpperLeg', mixamorigLeftLeg: 'leftLowerLeg',
+            mixamorigLeftFoot: 'leftFoot', mixamorigRightUpLeg: 'rightUpperLeg',
+            mixamorigRightLeg: 'rightLowerLeg', mixamorigRightFoot: 'rightFoot',
+        };
+
+        // ===== DOM REFS =====
+        const loadingScreen = document.getElementById('loading-screen');
+        const loaderFill = document.getElementById('loader-fill');
+        const loaderStatus = document.getElementById('loader-status');
+        const onboarding = document.getElementById('onboarding');
+        const onboardName = document.getElementById('onboard-name');
+        const onboardSubmit = document.getElementById('onboard-submit');
+        const statusPill = document.getElementById('status-pill');
+        const statusText = document.getElementById('status-text');
+        const chatPanel = document.getElementById('chat-panel');
+        const chatMessages = document.getElementById('chat-messages');
+        const chatInput = document.getElementById('chat-input');
+        const micBtn = document.getElementById('mic-btn');
+        const sendBtn = document.getElementById('send-btn');
+        const chatClose = document.getElementById('chat-close');
+        const btnChat = document.getElementById('btn-chat');
+        const btnEmotes = document.getElementById('btn-emotes');
+        const btnAnims = document.getElementById('btn-anims');
+        const expressionRow = document.getElementById('expression-row');
+        const animRow = document.getElementById('anim-row');
+        const permOverlay = document.getElementById('permission-overlay');
+        const permTitle = document.getElementById('perm-title');
+        const permDesc = document.getElementById('perm-desc');
+        const permTimer = document.getElementById('perm-timer');
+        const permDeny = document.getElementById('perm-deny');
+        const permAllow = document.getElementById('perm-allow');
+
+        // ===== MEMORY (localStorage) =====
+        const memory = {
+            get(key) { return localStorage.getItem('aria_' + key); },
+            set(key, val) { localStorage.setItem('aria_' + key, val); },
+            getObj(key) { try { return JSON.parse(localStorage.getItem('aria_' + key)); } catch { return null; } },
+            setObj(key, val) { localStorage.setItem('aria_' + key, JSON.stringify(val)); }
+        };
+
+        // ===== RENDERER =====
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+        renderer.toneMapping = THREE.NoToneMapping;
+        document.body.appendChild(renderer.domElement);
+        renderer.domElement.id = 'avatar-canvas';
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(30, window.innerWidth / window.innerHeight, 0.1, 100);
+        camera.position.set(0, 1.3, 3.0);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.target.set(0, 1.2, 0);
+        controls.update();
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.enablePan = false;
+        controls.minDistance = 1.5;
+        controls.maxDistance = 6;
+
+        // ===== LIGHTING =====
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
+        dirLight.position.set(1, 1, 1).normalize();
+        scene.add(dirLight);
+
+        const ambLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambLight);
+
+        // ===== STATE =====
+        let currentVrm = null;
+        let mixer = null;
+        let currentAction = null;
+        let blinkPhase = 0;
+        let blinkTimer = 0;
+        let nextBlinkTime = 3 + Math.random();
+        const animations = {};
+        const clock = new THREE.Clock();
+        let currentEmotion = 'neutral';
+        let emotionLerpTarget = {};
+        let isSpeaking = false;
+        let chatHistory = [];
+
+        // ===== LOAD MANAGER =====
+        const mgr = new THREE.LoadingManager();
+        mgr.onProgress = (url, loaded, total) => {
+            const pct = (loaded / total) * 100;
+            loaderFill.style.width = pct + '%';
+            loaderStatus.textContent = 'Loading assets... ' + Math.round(pct) + '%';
+        };
+        mgr.onLoad = () => {
+            loaderStatus.textContent = 'Ready';
+            setTimeout(() => {
+                loadingScreen.classList.add('hidden');
+                setTimeout(() => { loadingScreen.style.display = 'none'; }, 600);
+
+                // Check if first launch
+                if (!memory.get('name')) {
+                    onboarding.classList.add('visible');
+                } else {
+                    startARIA();
+                }
+            }, 400);
+        };
+
+        // ===== RETARGET FUNCTION =====
+        function loadMixamoAnimation(url, vrm) {
+            const loader = new FBXLoader(mgr);
+            return loader.loadAsync(url).then((asset) => {
+                const clip = THREE.AnimationClip.findByName(asset.animations, 'mixamo.com');
+                const tracks = [];
+                const restRotationInverse = new THREE.Quaternion();
+                const parentRestWorldRotation = new THREE.Quaternion();
+                const _quatA = new THREE.Quaternion();
+                const _vec3 = new THREE.Vector3();
+
+                const motionHipsHeight = asset.getObjectByName('mixamorigHips').position.y;
+                const vrmHipsY = vrm.humanoid?.getNormalizedBoneNode('hips').getWorldPosition(_vec3).y;
+                const vrmRootY = vrm.scene.getWorldPosition(_vec3).y;
+                const vrmHipsHeight = Math.abs(vrmHipsY - vrmRootY);
+                const hipsPositionScale = vrmHipsHeight / motionHipsHeight;
+
+                clip.tracks.forEach((track) => {
+                    const trackSplitted = track.name.split('.');
+                    const mixamoRigName = trackSplitted[0];
+                    const vrmBoneName = mixamoVRMRigMap[mixamoRigName];
+                    const vrmNodeName = vrm.humanoid?.getNormalizedBoneNode(vrmBoneName)?.name;
+                    const mixamoRigNode = asset.getObjectByName(mixamoRigName);
+
+                    if (vrmNodeName != null) {
+                        const propertyName = trackSplitted[1];
+                        mixamoRigNode.getWorldQuaternion(restRotationInverse).invert();
+                        mixamoRigNode.parent.getWorldQuaternion(parentRestWorldRotation);
+
+                        if (track instanceof THREE.QuaternionKeyframeTrack) {
+                            for (let i = 0; i < track.values.length; i += 4) {
+                                const flatQuat = track.values.slice(i, i + 4);
+                                _quatA.fromArray(flatQuat);
+                                _quatA.premultiply(parentRestWorldRotation).multiply(restRotationInverse);
+                                _quatA.toArray(flatQuat);
+                                flatQuat.forEach((v, index) => { track.values[index + i] = v; });
+                            }
+                            tracks.push(new THREE.QuaternionKeyframeTrack(
+                                `${vrmNodeName}.${propertyName}`, track.times,
+                                track.values.map((v, i) => (vrm.meta?.metaVersion === '0' && i % 2 === 0 ? -v : v))
+                            ));
+                        } else if (track instanceof THREE.VectorKeyframeTrack) {
+                            const value = track.values.map((v, i) =>
+                                (vrm.meta?.metaVersion === '0' && i % 3 !== 1 ? -v : v) * hipsPositionScale
+                            );
+                            tracks.push(new THREE.VectorKeyframeTrack(
+                                `${vrmNodeName}.${propertyName}`, track.times, value
+                            ));
+                        }
+                    }
+                });
+                return new THREE.AnimationClip('vrmAnimation', clip.duration, tracks);
+            });
+        }
+
+        // ===== LOAD VRM =====
+        const gltfLoader = new GLTFLoader(mgr);
+        gltfLoader.register((parser) => new VRMLoaderPlugin(parser));
+
+        gltfLoader.load('./AvatarSample_I.vrm', (gltf) => {
+            const vrm = gltf.userData.vrm;
+            scene.add(vrm.scene);
+            currentVrm = vrm;
+            vrm.scene.traverse((obj) => { if (obj.isMesh) obj.frustumCulled = false; });
+            mixer = new THREE.AnimationMixer(vrm.scene);
+
+            loadMixamoAnimation('./Idle (3).fbx', vrm).then((clip) => {
+                animations['idle'] = mixer.clipAction(clip);
+            });
+            loadMixamoAnimation('./Talking (1).fbx', vrm).then((clip) => {
+                animations['talking'] = mixer.clipAction(clip);
+            });
+        }, undefined, (err) => console.error('VRM load error:', err));
+
+        // ===== ANIMATION CONTROL =====
+        function playAnimation(name) {
+            if (!animations[name]) return;
+            const next = animations[name];
+            if (currentAction && currentAction !== next) {
+                next.reset().play();
+                next.crossFadeFrom(currentAction, 0.3, true);
+            } else if (!currentAction) {
+                next.play();
+            }
+            currentAction = next;
+            document.querySelectorAll('#anim-row .ctrl-btn').forEach(b => {
+                b.classList.toggle('active', b.dataset.anim === name);
+            });
+        }
+
+        // ===== EXPRESSION CONTROL =====
+        function setExpression(name) {
+            if (!currentVrm) return;
+            const allExprs = ['happy', 'sad', 'angry', 'surprised', 'neutral'];
+            allExprs.forEach(e => {
+                try { currentVrm.expressionManager.setValue(e, 0); } catch {}
+            });
+            if (name !== 'neutral') {
+                try { currentVrm.expressionManager.setValue(name, 1.0); } catch {}
+            }
+            currentEmotion = name;
+            document.querySelectorAll('.expr-btn').forEach(b => {
+                b.classList.toggle('active', b.dataset.expr === name);
+            });
+        }
+
+        // Auto-revert expression after 3s
+        function flashExpression(name) {
+            setExpression(name);
+            if (name !== 'neutral') {
+                setTimeout(() => setExpression('neutral'), 3000);
+            }
+        }
+
+        // ===== STATUS PILL =====
+        let statusTimer = null;
+        function showStatus(text) {
+            statusText.textContent = text;
+            statusPill.classList.add('visible');
+            clearTimeout(statusTimer);
+            statusTimer = setTimeout(() => statusPill.classList.remove('visible'), 3000);
+        }
+
+        // ===== CHAT =====
+        function addMessage(text, type = 'aria') {
+            const div = document.createElement('div');
+            div.className = 'msg ' + type;
+            if (type === 'aria') {
+                div.innerHTML = `<div class="aria-label">ARIA</div>${text}`;
+            } else {
+                div.textContent = text;
+            }
+            chatMessages.appendChild(div);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        async function sendMessage(text) {
+            if (!text.trim()) return;
+            addMessage(text, 'user');
+            chatInput.value = '';
+            showStatus('Thinking...');
+            playAnimation('talking');
+
+            const userName = memory.get('name') || 'friend';
+            chatHistory.push({ role: 'user', parts: [{ text }] });
+
+            const systemPrompt = `You are ARIA, a warm, witty desktop companion with personality. You are talking to ${userName}. You live on their desktop and help them with tasks. Be friendly but not overly bubbly. Keep responses concise (1-3 sentences max). Respond in JSON format: {"text": "your reply here", "emotion": "neutral|happy|sad|angry|surprised"}. Only output valid JSON, nothing else.`;
+
+            // Check for Gemini API key
+            let apiKey = memory.get('gemini_key');
+            if (!apiKey) {
+                addMessage("I need a Gemini API key to think! Type <b>!key YOUR_KEY</b> to set it.", 'aria');
+                showStatus('Needs API key');
+                playAnimation('idle');
+                return;
+            }
+
+            try {
+                const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        system_instruction: { parts: [{ text: systemPrompt }] },
+                        contents: chatHistory.slice(-10)
+                    })
+                });
+                const data = await res.json();
+                const raw = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+                let parsed;
+                try {
+                    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+                    parsed = JSON.parse(jsonMatch ? jsonMatch[0] : raw);
+                } catch {
+                    parsed = { text: raw, emotion: 'neutral' };
+                }
+
+                chatHistory.push({ role: 'model', parts: [{ text: parsed.text }] });
+                addMessage(parsed.text, 'aria');
+                flashExpression(parsed.emotion || 'neutral');
+
+                // TTS
+                speakText(parsed.text);
+                showStatus('Idle');
+            } catch (err) {
+                console.error('Gemini error:', err);
+                addMessage("Hmm, I had trouble thinking. Check your API key or connection.", 'aria');
+                showStatus('Error');
+            }
+            setTimeout(() => playAnimation('idle'), 2000);
+        }
+
+        // ===== TTS =====
+        function speakText(text) {
+            if (!('speechSynthesis' in window)) return;
+            window.speechSynthesis.cancel();
+            const utter = new SpeechSynthesisUtterance(text);
+            utter.rate = 1.05;
+            utter.pitch = 1.1;
+            const voices = window.speechSynthesis.getVoices();
+            const femaleVoice = voices.find(v => /female|zira|samantha|karen/i.test(v.name));
+            if (femaleVoice) utter.voice = femaleVoice;
+            utter.onstart = () => { isSpeaking = true; playAnimation('talking'); };
+            utter.onend = () => { isSpeaking = false; playAnimation('idle'); };
+            window.speechSynthesis.speak(utter);
+        }
+
+        // ===== VOICE INPUT =====
+        let recognition = null;
+        let isRecording = false;
+        if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+            const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+            recognition = new SpeechRec();
+            recognition.continuous = false;
+            recognition.interimResults = false;
+            recognition.lang = 'en-US';
+            recognition.onresult = (e) => {
+                const transcript = e.results[0][0].transcript;
+                chatInput.value = transcript;
+                sendMessage(transcript);
+                isRecording = false;
+                micBtn.classList.remove('recording');
+            };
+            recognition.onend = () => {
+                isRecording = false;
+                micBtn.classList.remove('recording');
+            };
+        }
+
+        // ===== PERMISSION SYSTEM =====
+        function requestPermission(title, desc) {
+            return new Promise((resolve) => {
+                permTitle.textContent = title;
+                permDesc.textContent = desc;
+                permOverlay.classList.add('visible');
+                permTimer.style.width = '100%';
+                setTimeout(() => { permTimer.style.width = '0%'; }, 50);
+
+                const timeout = setTimeout(() => {
+                    permOverlay.classList.remove('visible');
+                    resolve(false);
+                }, 30000);
+
+                const cleanup = (result) => {
+                    clearTimeout(timeout);
+                    permOverlay.classList.remove('visible');
+                    resolve(result);
+                };
+                permAllow.onclick = () => cleanup(true);
+                permDeny.onclick = () => cleanup(false);
+            });
+        }
+
+        // ===== START ARIA =====
+        function startARIA() {
+            const name = memory.get('name') || 'friend';
+            if (animations['idle']) playAnimation('idle');
+            showStatus('Idle');
+
+            // Open chat and greet
+            setTimeout(() => {
+                chatPanel.classList.add('open');
+                btnChat.classList.add('active');
+                addMessage(`Hey ${name}! I'm here whenever you need me. Just type or tap the mic.`, 'aria');
+                speakText(`Hey ${name}! I'm here whenever you need me.`);
+                flashExpression('happy');
+            }, 800);
+        }
+
+        // ===== ONBOARDING =====
+        onboardSubmit.addEventListener('click', () => {
+            const name = onboardName.value.trim();
+            if (!name) return;
+            memory.set('name', name);
+            onboarding.classList.remove('visible');
+            startARIA();
+        });
+        onboardName.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') onboardSubmit.click();
+        });
+
+        // ===== EVENT LISTENERS =====
+        btnChat.addEventListener('click', () => {
+            chatPanel.classList.toggle('open');
+            btnChat.classList.toggle('active');
+        });
+        chatClose.addEventListener('click', () => {
+            chatPanel.classList.remove('open');
+            btnChat.classList.remove('active');
+        });
+
+        btnEmotes.addEventListener('click', () => {
+            expressionRow.classList.toggle('visible');
+            btnEmotes.classList.toggle('active');
+            animRow.classList.remove('visible');
+            btnAnims.classList.remove('active');
+        });
+        btnAnims.addEventListener('click', () => {
+            animRow.classList.toggle('visible');
+            btnAnims.classList.toggle('active');
+            expressionRow.classList.remove('visible');
+            btnEmotes.classList.remove('active');
+        });
+
+        document.querySelectorAll('.expr-btn').forEach(btn => {
+            btn.addEventListener('click', () => setExpression(btn.dataset.expr));
+        });
+        document.querySelectorAll('#anim-row .ctrl-btn').forEach(btn => {
+            btn.addEventListener('click', () => playAnimation(btn.dataset.anim));
+        });
+
+        sendBtn.addEventListener('click', () => sendMessage(chatInput.value));
+        chatInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') sendMessage(chatInput.value);
+        });
+
+        // Handle special commands
+        chatInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                const val = chatInput.value.trim();
+                if (val.startsWith('!key ')) {
+                    const key = val.replace('!key ', '').trim();
+                    memory.set('gemini_key', key);
+                    chatInput.value = '';
+                    addMessage('API key saved! I can think now. 🧠', 'aria');
+                    e.preventDefault();
+                    e.stopImmediatePropagation();
+                    return;
+                }
+            }
+        });
+
+        micBtn.addEventListener('click', () => {
+            if (!recognition) { addMessage("Voice input isn't supported in this browser.", 'system'); return; }
+            if (isRecording) {
+                recognition.stop();
+            } else {
+                recognition.start();
+                isRecording = true;
+                micBtn.classList.add('recording');
+            }
+        });
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // ===== RENDER LOOP =====
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+            controls.update();
+            if (mixer) mixer.update(delta);
+
+            if (currentVrm) {
+                // Auto-blink
+                if (blinkPhase === 0) {
+                    blinkTimer += delta;
+                    if (blinkTimer > nextBlinkTime) {
+                        blinkPhase = 1;
+                        blinkTimer = 0;
+                        nextBlinkTime = 3 + Math.random();
+                    }
+                } else if (blinkPhase === 1) {
+                    let v = currentVrm.expressionManager.getValue('blink') || 0;
+                    v += delta * 15;
+                    if (v >= 1) { v = 1; blinkPhase = 2; }
+                    currentVrm.expressionManager.setValue('blink', v);
+                } else if (blinkPhase === 2) {
+                    let v = currentVrm.expressionManager.getValue('blink') || 1;
+                    v -= delta * 15;
+                    if (v <= 0) { v = 0; blinkPhase = 0; }
+                    currentVrm.expressionManager.setValue('blink', v);
+                }
+
+                currentVrm.update(delta);
+            }
+
+            renderer.render(scene, camera);
+        }
+        animate();
+    </script>
+</body>
+</html>
