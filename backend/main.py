@@ -1,6 +1,8 @@
 import json
 import asyncio
 import re
+import uuid
+import time
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
@@ -15,6 +17,26 @@ from dotenv import load_dotenv
 from cartesia import Cartesia
 
 load_dotenv(dotenv_path=Path(__file__).parent / ".env")
+
+# ── New agentic modules ───────────────────────────────────────────────────────
+try:
+    from agent_orchestrator import orchestrator
+except Exception as _orch_err:
+    print(f"[ARIA] agent_orchestrator import failed: {_orch_err}")
+    orchestrator = None
+
+try:
+    from memory import memory_mgr
+except Exception as _mem_err:
+    print(f"[ARIA] memory import failed: {_mem_err}")
+    memory_mgr = None
+
+try:
+    from research import research_agent
+except Exception as _res_err:
+    print(f"[ARIA] research import failed: {_res_err}")
+    research_agent = None
+# ─────────────────────────────────────────────────────────────────────────────
 
 # Cartesia TTS configuration
 # Using "British Lady" voice — a natural, professional female voice
@@ -334,10 +356,25 @@ def invoke_gemini(user_message: str, memory: dict) -> dict:
             "name": "scout_hackathons",
             "description": "Explores Unstop and finds active hackathons/coding competitions, saving findings to the Notepad.",
             "args": {"query": "optional search query"}
+        },
+        {
+            "name": "research",
+            "description": "Researches any topic using web search and AI synthesis. Saves a structured report to the Notepad. Use this when the user asks to research, investigate, find information about, or analyze any topic.",
+            "args": {"query": "the research topic or question"}
         }
     ]
 
-    system_prompt = SYSTEM_PROMPT + f"\nUSER CONTEXT (Memory): {json.dumps(memory)}" + "\n\nTOOLS AVAILABLE:\n" + json.dumps(tools_context, indent=2)
+    # Augment system prompt with relevant episodic context if available
+    episodic_context = ""
+    if memory_mgr:
+        try:
+            past_episodes = memory_mgr.get_relevant_context(user_message, n_results=3)
+            if past_episodes:
+                episodic_context = "\n\nRELEVANT PAST EXPERIENCE:\n" + "\n".join(f"- {ep}" for ep in past_episodes)
+        except Exception:
+            pass
+
+    system_prompt = SYSTEM_PROMPT + f"\nUSER CONTEXT (Memory): {json.dumps(memory)}" + episodic_context + "\n\nTOOLS AVAILABLE:\n" + json.dumps(tools_context, indent=2)
     client = _get_gemini_client()
     if not client:
         return {"type": "text", "content": "[EMOTION: SAD] Gemini is not configured. Please set GEMINI_API_KEY."}
@@ -451,39 +488,120 @@ async def websocket_endpoint(websocket: WebSocket):
                         
                         if tool_name == "fill_form_with_memory":
                             form_url = tool_args.get("url")
-                            await websocket.send_json({
-                                "type": "task_update",
-                                "task": "Launching browser agent..."
-                            })
-                            
-                            from agent_tools import fill_form_with_playwright
-                            
-                            # Launch the form filler in a non-blocking background task so WS loop is completely responsive!
-                            asyncio.create_task(fill_form_with_playwright(form_url, MEMORY_STORE, websocket))
-                            
-                            # Immediately send a chat response so ARIA speaks to the user while form filling happens!
-                            response_text = "[EMOTION: HAPPY] I have launched my Google Form Filling Agent! I opened a Chromium browser using a secure, persistent local profile and am matching and autofilling the fields using the details in my memory. You can watch me fill it out live in the browser window! Once completed, I will present a confirmation prompt so we can submit it automatically."
-                            await websocket.send_json({
-                                "type": "chat_response",
-                                "content": response_text,
-                                "timestamp": data.get("timestamp")
-                            })
+
+                            # ── Build and emit Planning Card ──────────────────
+                            plan_id = str(uuid.uuid4())[:8]
+                            plan = {
+                                "id": plan_id,
+                                "summary": f"Fill the registration form at {form_url} using your saved profile.",
+                                "steps": [
+                                    {"id": 1, "label": "Launch persistent Chromium browser", "status": "pending"},
+                                    {"id": 2, "label": "Navigate to form URL", "status": "pending"},
+                                    {"id": 3, "label": "Inject visual DOM badge overlay", "status": "pending"},
+                                    {"id": 4, "label": "Autofill fields from memory", "status": "pending"},
+                                    {"id": 5, "label": "Gather any missing information from you", "status": "pending"},
+                                    {"id": 6, "label": "Request submission confirmation", "status": "pending"},
+                                ],
+                                "permissions": ["Open browser window", "Read memory profile", "Write to memory.json"],
+                                "info_gaps": [
+                                    field for field in ["teamCode", "projectTitle", "domain"]
+                                    if not MEMORY_STORE.get(field)
+                                ],
+                            }
+                            await websocket.send_json({"type": "planning_card", "plan": plan})
+
+                            # ── Wait for user approval (up to 60s) ───────────
+                            from agent_tools import active_sessions
+                            plan_event = asyncio.Event()
+                            active_sessions[f"plan_{plan_id}"] = plan_event
+                            try:
+                                await asyncio.wait_for(plan_event.wait(), timeout=60.0)
+                                approved = active_sessions.pop(f"plan_{plan_id}_approved", True)
+                            except asyncio.TimeoutError:
+                                approved = True  # Auto-approve after timeout so demo doesn't stall
+                            active_sessions.pop(f"plan_{plan_id}", None)
+
+                            if not approved:
+                                await websocket.send_json({
+                                    "type": "chat_response",
+                                    "content": "[EMOTION: HAPPY] No problem! I have cancelled the form-filling task. Let me know when you're ready.",
+                                    "timestamp": data.get("timestamp")
+                                })
+                            else:
+                                # ── Spawn BrowserBot via orchestrator ──────────
+                                from agent_tools import fill_form_with_playwright
+                                response_text = "[EMOTION: HAPPY] Plan approved! I've launched BrowserBot. Watch me fill the form live in the browser window!"
+                                await websocket.send_json({
+                                    "type": "chat_response",
+                                    "content": response_text,
+                                    "timestamp": data.get("timestamp")
+                                })
+
+                                if orchestrator:
+                                    await orchestrator.spawn_agent(
+                                        name="BrowserBot",
+                                        coro=fill_form_with_playwright(form_url, MEMORY_STORE, websocket),
+                                        websocket=websocket,
+                                        accent_color="#10b981",
+                                    )
+                                else:
+                                    asyncio.create_task(fill_form_with_playwright(form_url, MEMORY_STORE, websocket))
+
+                        elif tool_name == "research":
+                            query = tool_args.get("query", "")
+                            if not query:
+                                await websocket.send_json({
+                                    "type": "chat_response",
+                                    "content": "[EMOTION: HAPPY] What would you like me to research?",
+                                    "timestamp": data.get("timestamp")
+                                })
+                            else:
+                                response_text = f"[EMOTION: HAPPY] Starting research on '{query}'! I'll decompose the question, search the web, synthesize findings, and save a report to your Notepad."
+                                await websocket.send_json({
+                                    "type": "chat_response",
+                                    "content": response_text,
+                                    "timestamp": data.get("timestamp")
+                                })
+
+                                if research_agent and orchestrator:
+                                    agent_id = str(uuid.uuid4())[:8]
+                                    await orchestrator.spawn_agent(
+                                        name="ResearchBot",
+                                        coro=research_agent.research(query, websocket, agent_id),
+                                        websocket=websocket,
+                                        accent_color="#8b5cf6",
+                                    )
+                                elif research_agent:
+                                    async def _run_research():
+                                        agent_id = str(uuid.uuid4())[:8]
+                                        await research_agent.research(query, websocket, agent_id)
+                                    asyncio.create_task(_run_research())
+                                else:
+                                    await websocket.send_json({
+                                        "type": "chat_response",
+                                        "content": "[EMOTION: SAD] Research agent is not available. Please install: pip install tavily-python httpx beautifulsoup4",
+                                        "timestamp": data.get("timestamp")
+                                    })
+
                         elif tool_name == "scout_hackathons":
                             query = tool_args.get("query", "hackathon")
-                            await websocket.send_json({
-                                "type": "task_update",
-                                "task": "Scouting Unstop..."
-                            })
-                            
-                            from agent_tools import scout_unstop_hackathons
-                            asyncio.create_task(scout_unstop_hackathons(query, websocket))
-                            
-                            response_text = f"[EMOTION: HAPPY] I'm launching my Unstop Scout! I'm visually navigating to Unstop's competition page to search for active '{query}' hackathons. I will compile all hackathons I find into a beautifully formatted document in your Notepad tab. You can inspect it live in a few seconds!"
+                            response_text = f"[EMOTION: HAPPY] I'm launching my Unstop Scout! I'll visually navigate to Unstop's competition page to search for active '{query}' hackathons and compile a report in your Notepad tab."
                             await websocket.send_json({
                                 "type": "chat_response",
                                 "content": response_text,
                                 "timestamp": data.get("timestamp")
                             })
+
+                            from agent_tools import scout_unstop_hackathons
+                            if orchestrator:
+                                await orchestrator.spawn_agent(
+                                    name="ScoutBot",
+                                    coro=scout_unstop_hackathons(query, websocket),
+                                    websocket=websocket,
+                                    accent_color="#f59e0b",
+                                )
+                            else:
+                                asyncio.create_task(scout_unstop_hackathons(query, websocket))
                         elif tool_name == "open_desktop_app":
                             app_name = tool_args.get("app_name")
                             await websocket.send_json({
@@ -570,6 +688,21 @@ async def websocket_endpoint(websocket: WebSocket):
                             "timestamp": data.get("timestamp")
                         })
                         
+                elif msg_type_str == "approve_plan":
+                    plan_id = data.get("planId", "")
+                    cancelled = data.get("cancelled", False)
+                    print(f"[WS] Plan {'cancelled' if cancelled else 'approved'}: {plan_id}")
+                    from agent_tools import active_sessions
+                    active_sessions[f"plan_{plan_id}_approved"] = not cancelled
+                    if f"plan_{plan_id}" in active_sessions:
+                        active_sessions[f"plan_{plan_id}"].set()
+
+                elif msg_type_str == "cancel_agent":
+                    agent_id_to_cancel = data.get("agentId", "")
+                    print(f"[WS] Cancel agent request: {agent_id_to_cancel}")
+                    if orchestrator and agent_id_to_cancel:
+                        await orchestrator.cancel_agent(agent_id_to_cancel, websocket)
+
                 elif msg_type_str == "permission_response":
                     # Check if response is an object (for input/voice HITL or batch HITL) or boolean (for submit HITL)
                     if isinstance(data, dict) and ("value" in data or "values" in data):
