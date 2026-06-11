@@ -2,12 +2,17 @@ import React, { useState, useRef, useEffect } from 'react'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import AvatarZone from './components/AvatarZone'
 import ChatPanel from './components/ChatPanel'
-import VoiceBar from './components/VoiceBar'
+import BottomBar from './components/BottomBar'
 import BubbleMode from './components/BubbleMode'
 import MemoryPanel from './components/MemoryPanel'
 import StorePage from './components/StorePage'
 import HITLModal from './components/HITLModal'
 import NotepadPanel from './components/NotepadPanel'
+import WidgetZone from './components/WidgetZone'
+import PlanningCard from './components/PlanningCard'
+import TaskCanvas from './components/TaskCanvas'
+import CompletionCard from './components/CompletionCard'
+import { useAriaStore } from './store/ariaStore'
 
 const API_BASE = 'http://localhost:8000'
 
@@ -19,12 +24,52 @@ const getGreeting = () => {
 }
 
 export default function App() {
+  const {
+    appState,
+    messages,
+    isThinking,
+    agentState,
+    activeTask,
+    taskLog,
+    activeAgents,
+    activePlan,
+    hitlRequest,
+    memoryData,
+    widgetLayout,
+    completionData,
+    transitionTo,
+    addMessage,
+    setIsThinking,
+    setAgentState,
+    setActiveTask,
+    addTaskLog,
+    clearTaskLog,
+    spawnAgent,
+    updateAgentHeartbeat,
+    removeAgent,
+    setActivePlan,
+    setHitlRequest,
+    clearHitlRequest,
+    setMemoryData,
+    setCompletionData,
+    updateWidget,
+    resetWidgetLayout,
+    setActiveCanvas
+  } = useAriaStore()
+
   const [currentView, setCurrentView] = useState('home')
   const [isBubbleMode, setIsBubbleMode] = useState(false)
   const [selectedModel, setSelectedModel] = useState('female')
+  const [particles, setParticles] = useState([])
+  
   const selectedModelRef = useRef('female')
+  const wsRef = useRef(null)
+  const audioContextRef = useRef(null)
+  const rafRef = useRef(null)
+  
+  const greeting = getGreeting()
 
-  // F11 Fullscreen
+  // Fullscreen support
   useEffect(() => {
     const handleKeyDown = async (e) => {
       if (e.key === 'F11') {
@@ -33,33 +78,49 @@ export default function App() {
           const win = getCurrentWindow()
           const isFull = await win.isFullscreen()
           await win.setFullscreen(!isFull)
-        } catch (err) {}
+        } catch (_) {}
       }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [])
-  
-  // Update ref when state changes
+
+  // Sync ref
   useEffect(() => {
     selectedModelRef.current = selectedModel
   }, [selectedModel])
 
+  // Load profile memory on start
+  useEffect(() => {
+    fetch(`${API_BASE}/api/memory`)
+      .then(r => r.json())
+      .then(d => setMemoryData(d))
+      .catch(e => console.error('[ARIA] Error fetching memory on mount:', e))
+  }, [setMemoryData])
 
-  const [messages, setMessages] = useState([
-    { role: 'assistant', content: "Hello! I'm ARIA, your AI assistant. How can I help?", timestamp: new Date() }
-  ])
-  const [isThinking, setIsThinking] = useState(false)
-  const [hitlRequest, setHitlRequest] = useState(null)
-  const [activeTask, setActiveTask] = useState(null)
-  const [taskLog, setTaskLog] = useState([])
-  const [memoryData, setMemoryData] = useState({})
-  const [agentState, setAgentState] = useState('idle')
-  const wsRef = useRef(null)
-  const greeting = getGreeting()
-  const audioContextRef = useRef(null)
-  const rafRef = useRef(null)
+  // Success Particles emitter
+  const triggerSuccessParticles = () => {
+    const newParticles = Array.from({ length: 12 }).map((_, i) => {
+      const angle = Math.random() * Math.PI * 2
+      const distance = 40 + Math.random() * 80
+      return {
+        id: i,
+        tx: `${Math.cos(angle) * distance}px`,
+        ty: `${Math.sin(angle) * distance}px`,
+      }
+    })
+    setParticles(newParticles)
+    setTimeout(() => setParticles([]), 600)
+  }
 
+  // Trigger particles on entering completion state
+  useEffect(() => {
+    if (appState === 'completion') {
+      triggerSuccessParticles()
+    }
+  }, [appState])
+
+  // Audio TTS player
   const stopActiveAudio = () => {
     if (audioContextRef.current) {
       try {
@@ -88,13 +149,11 @@ export default function App() {
       })
       if (res.ok) {
         const ab = await res.arrayBuffer()
-        // Ensure no other fetch completed while we were waiting
         stopActiveAudio()
         
         const ac = new (window.AudioContext || window.webkitAudioContext)()
         audioContextRef.current = ac
         
-        // Browsers require resuming AudioContext after creation if there wasn't a recent user gesture
         if (ac.state === 'suspended') {
           await ac.resume()
         }
@@ -140,15 +199,7 @@ export default function App() {
     }
   }
 
-  // Load memory from backend on mount
-  useEffect(() => {
-    fetch(`${API_BASE}/api/memory`)
-      .then(r => r.json())
-      .then(d => setMemoryData(d))
-      .catch(e => console.error('[ARIA] Error fetching memory on mount:', e))
-  }, [])
-
-  // WebSocket
+  // WebSocket Connection
   useEffect(() => {
     const connect = () => {
       try {
@@ -158,10 +209,10 @@ export default function App() {
         ws.onmessage = (e) => {
           try {
             const data = JSON.parse(e.data)
+            
             if (data.type === 'chat_response') {
               setIsThinking(false)
               setAgentState('speaking')
-              
               stopActiveAudio()
               
               let finalText = data.content
@@ -181,85 +232,131 @@ export default function App() {
                 finalText = finalText.replace(actionMatch[0], '').trim()
               }
               
-              setMessages(p => [...p, { role: 'assistant', content: finalText, timestamp: new Date() }])
+              addMessage({ role: 'assistant', content: finalText })
               
               const cleanTTS = finalText.replace(/([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])/g, '').replace(/\(.*?\)/g, '').replace(/\[.*?\]/g, '').trim()
               
-              // Cap at ~500 chars but break at the last sentence-ending punctuation so we never cut mid-sentence.
-              let shortTTS = cleanTTS;
+              let shortTTS = cleanTTS
               if (cleanTTS.length > 500) {
-                const truncated = cleanTTS.substring(0, 500);
+                const truncated = cleanTTS.substring(0, 500)
                 const lastSentenceEnd = Math.max(
                   truncated.lastIndexOf('. '),
                   truncated.lastIndexOf('! '),
-                  truncated.lastIndexOf('? '),
-                  truncated.lastIndexOf('.'),
-                  truncated.lastIndexOf('!'),
-                  truncated.lastIndexOf('?')
-                );
-                shortTTS = lastSentenceEnd > 100 ? truncated.substring(0, lastSentenceEnd + 1) : truncated;
+                  truncated.lastIndexOf('? ')
+                )
+                shortTTS = lastSentenceEnd > 100 ? truncated.substring(0, lastSentenceEnd + 1) : truncated
               }
               
               if (cleanTTS) speakResponse(shortTTS)
             }
-            if (data.type === 'permission_request') {
-              // Beep sound for HITL to alert the user!
+            
+            else if (data.type === 'permission_request') {
               try {
-                const ac = new (window.AudioContext || window.webkitAudioContext)();
-                if (ac.state === 'suspended') ac.resume();
-                const osc = ac.createOscillator(); const gain = ac.createGain();
-                osc.connect(gain); gain.connect(ac.destination);
-                osc.type = 'sine'; osc.frequency.setValueAtTime(880, ac.currentTime);
-                gain.gain.setValueAtTime(0.1, ac.currentTime);
-                gain.gain.exponentialRampToValueAtTime(0.01, ac.currentTime + 0.5);
-                osc.start(ac.currentTime); osc.stop(ac.currentTime + 0.5);
+                const ac = new (window.AudioContext || window.webkitAudioContext)()
+                if (ac.state === 'suspended') ac.resume()
+                const osc = ac.createOscillator(); const gain = ac.createGain()
+                osc.connect(gain); gain.connect(ac.destination)
+                osc.type = 'sine'; osc.frequency.setValueAtTime(880, ac.currentTime)
+                gain.gain.setValueAtTime(0.1, ac.currentTime)
+                gain.gain.exponentialRampToValueAtTime(0.01, ac.currentTime + 0.5)
+                osc.start(ac.currentTime); osc.stop(ac.currentTime + 0.5)
               } catch (_) {}
               setHitlRequest(data)
             }
-            if (data.type === 'task_update') {
-              setActiveTask(data.task)
-              if (!data.task) {
-                setTaskLog([])
+            
+            else if (data.type === 'task_update') {
+              if (data.task) {
+                setActiveTask(data.task)
+                addTaskLog(data.task)
               } else {
-                setTaskLog(prev => {
-                  if (prev.length === 0 || prev[prev.length - 1] !== data.task) {
-                     return [...prev, data.task].slice(-8)
-                  }
-                  return prev
-                })
+                setActiveTask(null)
+                clearTaskLog()
               }
             }
-            if (data.type === 'agent_thinking') {
-              setIsThinking(true); setAgentState('thinking')
+            
+            else if (data.type === 'agent_thinking') {
+              setIsThinking(true)
+              setAgentState('thinking')
               window.dispatchEvent(new CustomEvent('aura:setEmotion', { detail: 'thinking' }))
             }
-          } catch (_) {}
+
+            else if (data.type === 'planning_card') {
+              setActivePlan(data.plan)
+              transitionTo('planning')
+            }
+
+            else if (data.type === 'agent_spawn') {
+              spawnAgent({
+                id: data.agentId,
+                name: data.name,
+                accentColor: data.accentColor,
+                status: data.status,
+                step: data.step
+              })
+              
+              // Map agent name to appropriate canvas layout view
+              const nameLower = data.name.toLowerCase()
+              if (nameLower.includes('browser') || nameLower.includes('form')) {
+                setActiveCanvas('form')
+              } else if (nameLower.includes('research') || nameLower.includes('scout')) {
+                setActiveCanvas('research')
+              } else if (nameLower.includes('script') || nameLower.includes('run')) {
+                setActiveCanvas('script')
+              } else if (nameLower.includes('email')) {
+                setActiveCanvas('email')
+              } else if (nameLower.includes('certificate')) {
+                setActiveCanvas('certificate')
+              }
+              
+              transitionTo('execution')
+            }
+
+            else if (data.type === 'agent_heartbeat') {
+              updateAgentHeartbeat(data.agentId, data.status, data.step)
+            }
+
+            else if (data.type === 'agent_complete') {
+              removeAgent(data.agentId)
+              setCompletionData(data.result)
+              transitionTo('completion')
+            }
+            
+            else if (data.type === 'note_created') {
+              window.dispatchEvent(new CustomEvent('aria:note_created', { detail: data.filename }))
+            }
+          } catch (e) {
+            console.error('[ARIA WS message parsing error]', e)
+          }
         }
         ws.onclose = () => setTimeout(connect, 3000)
-        ws.onerror = () => {}
       } catch (_) {}
     }
     connect()
     return () => wsRef.current?.close()
-  }, [])
+  }, [addMessage, spawnAgent, updateAgentHeartbeat, removeAgent, setCompletionData, transitionTo, setActiveCanvas, setHitlRequest, setActiveTask, addTaskLog, clearTaskLog, setIsThinking, setAgentState, setActivePlan])
 
   const sendWS = (type, payload = {}) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN)
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type, ...payload }))
+    }
   }
 
   const sendMessage = (content) => {
     if (!content.trim()) return
     stopActiveAudio()
-    setMessages(p => [...p, { role: 'user', content, timestamp: new Date() }])
-    setIsThinking(true); setAgentState('thinking')
+    addMessage({ role: 'user', content })
+    setIsThinking(true)
+    setAgentState('thinking')
+    transitionTo('conversation')
     window.dispatchEvent(new CustomEvent('aura:setEmotion', { detail: 'thinking' }))
     sendWS('chat_message', { content, timestamp: new Date().toISOString() })
   }
 
   const sendVoiceAudio = (chunk) => {
     stopActiveAudio()
-    if (wsRef.current?.readyState === WebSocket.OPEN) wsRef.current.send(chunk)
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(chunk)
+    }
   }
 
   const handleHITL = (response) => {
@@ -268,47 +365,77 @@ export default function App() {
     } else {
       sendWS('permission_response', { allowed: response })
     }
-    setHitlRequest(null)
+    clearHitlRequest()
+  }
+
+  const handleApprovePlan = (planId, cancelled) => {
+    sendWS('approve_plan', { planId, cancelled })
   }
 
   const stopAgent = () => {
     sendWS('stop_task')
+    transitionTo('home')
   }
 
   const navItems = [
-    { id: 'home', label: 'Home', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg> },
-    { id: 'memory', label: 'Memory', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg> },
-    { id: 'notepad', label: 'Notepad', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg> },
-    { id: 'store', label: 'Store', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg> },
-    { id: 'settings', label: 'Settings', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg> },
+    { id: 'home', label: 'Home', tooltip: 'Companion Board', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg> },
+    { id: 'notepad', label: 'Tasks', tooltip: 'Task Findings & logs', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><path d="m9 12 2 2 4-4"/></svg> },
+    { id: 'memory', label: 'Memory', tooltip: 'Database profile', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg> },
+    { id: 'skills', label: 'Skills', tooltip: 'Functional skills', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg> },
+    { id: 'tools', label: 'Tools', tooltip: 'Tools & Skins', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg> },
+    { id: 'settings', label: 'Settings', tooltip: 'Avatar & Widget Config', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg> },
   ]
 
+  // Compute character column width dynamically based on view and execution state
+  const charWidth = currentView === 'home'
+    ? (appState === 'planning' ? '30%' : appState === 'execution' ? '20%' : '35%')
+    : '35%'
+
   return (
-    <div className="app" style={{ display:'flex', flexDirection:'column', height:'100vh' }}>
-      <nav className="navbar">
-        <div className="navbar-logo">
-          <div className="logo-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <path d="M12 2v20M2 12h20M4.9 4.9l14.2 14.2M4.9 19.1 19.1 4.9M8 4l8 16M4 8l16 8M4 16l16-8M8 20 16 4"/>
-            </svg>
-          </div>
+    <div className="app-container">
+      {/* Animated Video Background */}
+      <video
+        className="app-bg-video"
+        src="/cherry_blossom_bg.mp4"
+        autoPlay
+        loop
+        muted
+        playsInline
+      />
+
+      {/* Sidebar Navigation */}
+      <aside className="sidebar">
+        <div className="sidebar-logo">
+          <div className="logo-dot" />
           <span className="logo-text">ARIA</span>
         </div>
-        <div className="navbar-nav">
+        <div className="sidebar-nav">
           {navItems.map(item => (
-            <button key={item.id} id={`nav-${item.id}`}
-              className={`nav-item ${currentView === item.id ? 'active' : ''}`}
-              onClick={() => setCurrentView(item.id)}>
-              <span className="nav-icon">{item.icon}</span>
-              <span>{item.label}</span>
+            <button
+              key={item.id}
+              id={`nav-${item.id}`}
+              className={`sidebar-btn ${currentView === item.id ? 'active' : ''}`}
+              onClick={() => setCurrentView(item.id)}
+              data-tooltip={item.tooltip}
+            >
+              {item.icon}
             </button>
           ))}
         </div>
-      </nav>
+      </aside>
 
-      <main className="main-content">
-        {currentView === 'home' && (
-          <div className="home-layout">
+      <div className="app-shell">
+        {/* Top Bar Logo / Header */}
+        <header className="top-bar">
+          <div className="top-bar-logo">
+            <span className="logo-text" style={{ fontSize: '13px', opacity: 0.6 }}>SYSTEM WORKSPACE</span>
+          </div>
+        </header>
+
+        {/* Main Content Area */}
+        <main className="main-area">
+          {/* Left: 3D Character Zone */}
+          <div className="character-zone" style={{ width: charWidth, display: 'flex', flexDirection: 'column', position: 'relative' }}>
             <AvatarZone
               greeting={greeting}
               activeTask={activeTask}
@@ -318,81 +445,145 @@ export default function App() {
               modelId={selectedModel}
               onToggleBubble={() => setIsBubbleMode(true)}
               onStopAgent={stopAgent}
+              isWidget={currentView !== 'home' || appState === 'execution' || appState === 'planning'}
             />
-            <ChatPanel
-              messages={messages}
-              isThinking={isThinking}
-              onSendMessage={sendMessage}
-            />
-          </div>
-        )}
-        {currentView === 'memory' && (
-          <MemoryPanel memoryData={memoryData} setMemoryData={setMemoryData} apiBase={API_BASE} />
-        )}
-        {currentView === 'notepad' && (
-          <NotepadPanel apiBase={API_BASE} />
-        )}
-        {currentView === 'store' && <StorePage />}
-        {currentView === 'settings' && (
-          <div className="settings-panel" style={{ padding: '40px', maxWidth: '800px', margin: '0 auto', color: 'var(--text)' }}>
-            <h2 style={{ fontSize: '28px', marginBottom: '24px', fontWeight: '600' }}>Settings</h2>
             
-            <div className="settings-section" style={{ background: 'var(--bg-sec)', padding: '24px', borderRadius: '16px', border: '1px solid var(--border)' }}>
-              <h3 style={{ fontSize: '18px', marginBottom: '16px', color: 'var(--gold)' }}>Appearance & Voice</h3>
+            <div className="char-ambient-glow" />
+
+            {/* Success particles emitter container */}
+            {particles.map(p => (
+              <div
+                key={p.id}
+                className="particle"
+                style={{
+                  top: '52%',
+                  left: '50%',
+                  '--tx': p.tx,
+                  '--ty': p.ty
+                }}
+              />
+            ))}
+          </div>
+
+          {/* Right: Pages Routing / States Overlay */}
+          <div className="right-zone">
+            {currentView === 'home' && (
+              <>
+                {appState === 'home' && <WidgetZone onNavigate={setCurrentView} />}
+                {appState === 'conversation' && (
+                  <ChatPanel
+                    messages={messages}
+                    isThinking={isThinking}
+                    onSendMessage={sendMessage}
+                  />
+                )}
+                {appState === 'planning' && (
+                  <PlanningCard onApprovePlan={handleApprovePlan} />
+                )}
+                {appState === 'execution' && (
+                  <TaskCanvas onStopAgent={stopAgent} />
+                )}
+                {appState === 'completion' && (
+                  <CompletionCard onNavigate={setCurrentView} />
+                )}
+              </>
+            )}
+
+            {currentView === 'memory' && (
+              <MemoryPanel memoryData={memoryData} setMemoryData={setMemoryData} apiBase={API_BASE} />
+            )}
+
+            {currentView === 'notepad' && (
+              <NotepadPanel apiBase={API_BASE} />
+            )}
+
+            {currentView === 'skills' && (
+              <StorePage defaultTab="skills" />
+            )}
+
+            {currentView === 'tools' && (
+              <StorePage defaultTab="skins" />
+            )}
+
+          {currentView === 'settings' && (
+            <div className="page-container" style={{ color: 'var(--text-primary)' }}>
+              <div className="page-title">Settings</div>
               
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <div style={{ fontWeight: '500', marginBottom: '4px' }}>Avatar Model</div>
-                    <div style={{ fontSize: '13px', color: 'var(--text-sec)' }}>Choose the visual representation and voice of your assistant</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '700px' }}>
+                <div className="glass-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                  <h3 style={{ color: 'var(--gold-primary)', fontSize: '15px' }}>Appearance</h3>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <div style={{ fontSize: '13px', fontWeight: '500' }}>Avatar Model Representation</div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Choose your digital 3D model skin & voice</div>
+                    </div>
+                    <div style={{ display: 'flex', background: 'rgba(0,0,0,0.3)', padding: '4px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                      <button
+                        onClick={() => setSelectedModel('female')}
+                        style={{
+                          padding: '6px 12px',
+                          fontSize: '11px',
+                          border: 'none',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          background: selectedModel === 'female' ? 'var(--gold-primary)' : 'transparent',
+                          color: selectedModel === 'female' ? '#000' : 'var(--text-secondary)'
+                        }}
+                      >
+                        Female (I)
+                      </button>
+                      <button
+                        onClick={() => setSelectedModel('male')}
+                        style={{
+                          padding: '6px 12px',
+                          fontSize: '11px',
+                          border: 'none',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          background: selectedModel === 'male' ? 'var(--gold-primary)' : 'transparent',
+                          color: selectedModel === 'male' ? '#000' : 'var(--text-secondary)'
+                        }}
+                      >
+                        Male
+                      </button>
+                    </div>
                   </div>
-                  
-                  <div style={{ display: 'flex', background: 'var(--bg)', borderRadius: '8px', padding: '4px', border: '1px solid var(--border)' }}>
-                    <button 
-                      onClick={() => setSelectedModel('female')}
-                      style={{ 
-                        padding: '8px 16px', 
-                        borderRadius: '6px', 
-                        background: selectedModel === 'female' ? 'var(--gold)' : 'transparent',
-                        color: selectedModel === 'female' ? '#000' : 'var(--text)',
-                        border: 'none',
-                        cursor: 'pointer',
-                        fontWeight: '500',
-                        transition: 'all 0.2s'
-                      }}>
-                      Female (Default)
-                    </button>
-                    <button 
-                      onClick={() => setSelectedModel('male')}
-                      style={{ 
-                        padding: '8px 16px', 
-                        borderRadius: '6px', 
-                        background: selectedModel === 'male' ? 'var(--gold)' : 'transparent',
-                        color: selectedModel === 'male' ? '#000' : 'var(--text)',
-                        border: 'none',
-                        cursor: 'pointer',
-                        fontWeight: '500',
-                        transition: 'all 0.2s'
-                      }}>
-                      Male
-                    </button>
+                </div>
+
+                <div className="glass-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                  <h3 style={{ color: 'var(--gold-primary)', fontSize: '15px' }}>Companion Board Widgets</h3>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {widgetLayout.map(w => (
+                      <div key={w.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '13px', textTransform: 'capitalize' }}>{w.id.replace('_', ' ')}</span>
+                        <input
+                          type="checkbox"
+                          checked={w.visible}
+                          onChange={(e) => updateWidget(w.id, { visible: e.target.checked })}
+                          style={{ accentColor: 'var(--gold-primary)', cursor: 'pointer' }}
+                        />
+                      </div>
+                    ))}
                   </div>
+                  <button className="memory-view-all" style={{ marginTop: '10px' }} onClick={resetWidgetLayout}>
+                    Reset widget layouts
+                  </button>
                 </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </main>
 
+      {/* Bottom Bar Controls */}
       {!isBubbleMode && (
-        <VoiceBar
+        <BottomBar
           onSendMessage={sendMessage}
           onVoiceAudio={sendVoiceAudio}
-          agentState={agentState}
-          setAgentState={setAgentState}
         />
       )}
 
+      {/* Bubble Orb Mode Overlay */}
       {isBubbleMode && (
         <BubbleMode
           messages={messages}
@@ -404,7 +595,14 @@ export default function App() {
         />
       )}
 
-      {hitlRequest && <HITLModal request={hitlRequest} onRespond={handleHITL} />}
+      {/* Human-in-the-Loop Interruption Requests */}
+      {hitlRequest && (
+        <HITLModal 
+          request={hitlRequest} 
+          onRespond={handleHITL} 
+        />
+      )}
+      </div>
     </div>
   )
 }

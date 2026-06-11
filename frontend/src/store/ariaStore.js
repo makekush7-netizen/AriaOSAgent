@@ -1,0 +1,71 @@
+import { create } from 'zustand'
+
+// Default widget layout positions (as % of container for responsiveness)
+const DEFAULT_WIDGETS = [
+  { id: 'clock',        visible: true, position: { x: 0,   y: 0   }, size: { w: 46, h: 28 } },
+  { id: 'active_task',  visible: true, position: { x: 54,  y: 0   }, size: { w: 46, h: 28 } },
+  { id: 'memory',       visible: true, position: { x: 0,   y: 34  }, size: { w: 46, h: 54 } },
+  { id: 'quick_actions',visible: true, position: { x: 54,  y: 34  }, size: { w: 46, h: 54 } },
+]
+
+// appState: 'home' | 'conversation' | 'planning' | 'execution' | 'completion'
+export const useAriaStore = create((set) => ({
+  appState: 'home',
+  messages: [{ id: 1, role: 'aria', content: "Hello! I'm ARIA, your AI assistant. What would you like to do today?", ts: Date.now() }],
+  isThinking: false,
+  agentState: 'idle',
+  activeTask: null,
+  taskLog: [],
+  activeAgents: [],
+  activePlan: null,
+  activeCanvas: 'form', // 'form' | 'research' | 'email' | 'certificate' | 'script'
+  hitlRequest: null,
+  memoryData: {},
+  widgetLayout: DEFAULT_WIDGETS,
+  completionData: null,
+
+  transitionTo: (state) => set({ appState: state }),
+
+  addMessage: (msg) => set((s) => ({
+    messages: [...s.messages, { id: Date.now(), ...msg }]
+  })),
+
+  setIsThinking: (v) => set({ isThinking: v }),
+  setAgentState: (v) => set({ agentState: v }),
+  setActiveTask: (v) => set({ activeTask: v }),
+
+  addTaskLog: (entry) => set((s) => ({
+    taskLog: [...s.taskLog, entry].slice(-20)
+  })),
+
+  clearTaskLog: () => set({ taskLog: [] }),
+
+  spawnAgent: (agent) => set((s) => ({
+    activeAgents: [...s.activeAgents, agent]
+  })),
+
+  updateAgentHeartbeat: (agentId, status, step) => set((s) => ({
+    activeAgents: s.activeAgents.map(a => a.id === agentId ? { ...a, status, step } : a)
+  })),
+
+  removeAgent: (agentId) => set((s) => ({
+    activeAgents: s.activeAgents.filter(a => a.id !== agentId)
+  })),
+
+  setActivePlan: (plan) => set({ activePlan: plan }),
+
+  setHitlRequest: (req) => set({ hitlRequest: req }),
+  clearHitlRequest: () => set({ hitlRequest: null }),
+
+  setMemoryData: (data) => set({ memoryData: data }),
+
+  setCompletionData: (data) => set({ completionData: data }),
+
+  updateWidget: (id, patch) => set((s) => ({
+    widgetLayout: s.widgetLayout.map(w => w.id === id ? { ...w, ...patch } : w)
+  })),
+
+  resetWidgetLayout: () => set({ widgetLayout: DEFAULT_WIDGETS }),
+
+  setActiveCanvas: (type) => set({ activeCanvas: type }),
+}))
