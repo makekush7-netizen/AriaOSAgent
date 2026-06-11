@@ -24,6 +24,7 @@ async def broadcast_status(websocket, text: str):
     if websocket and websocket not in targets:
         targets.append(websocket)
         
+    dead = []
     for ws in targets:
         try:
             await ws.send_json({
@@ -31,7 +32,12 @@ async def broadcast_status(websocket, text: str):
                 "task": text
             })
         except Exception:
-            pass
+            dead.append(ws)
+            
+    # Clean up dead connections
+    for ws in dead:
+        if ws in active_websockets:
+            active_websockets.remove(ws)
 
 def clean_label(text: str) -> str:
     """Normalize label text for matching"""
@@ -567,6 +573,7 @@ async def fill_form_with_playwright(url: str, memory: Dict[str, str], websocket=
         await page.goto(url, wait_until="load")
         
         loop_count = 0
+        pages_filled = 1
         max_loops = 10
         screenshot_path = Path(__file__).parent / "screenshot.png"
         
@@ -1023,8 +1030,17 @@ async def fill_form_with_playwright(url: str, memory: Dict[str, str], websocket=
                             loop_count = max_loops
                             break
                         else:
+                            is_nav = any(x in label_text.lower() for x in ["next", "continue", "proceed"])
                             await element.click()
                             actions_executed += 1
+                            if is_nav:
+                                await broadcast_status(websocket, "Navigating to next page...")
+                                pages_filled += 1
+                                await asyncio.sleep(2)
+                                try:
+                                    await page.wait_for_load_state("networkidle", timeout=3000)
+                                except:
+                                    pass
                             
                     elif action_type in ["type", "fill"]:
                         # Double check if field already contains ANY info before typing
@@ -1052,7 +1068,7 @@ async def fill_form_with_playwright(url: str, memory: Dict[str, str], websocket=
                 print(f"[Vision Agent Loop Exception]: {e}")
                 await asyncio.sleep(2)
                 
-        await broadcast_status(websocket, "Vision Form Filler task complete. Browser window is ready.")
+        await broadcast_status(websocket, f"Vision Form Filler task complete. Navigated {pages_filled} pages. Browser window is ready.")
         await asyncio.sleep(3)
         
     finally:
@@ -1071,7 +1087,7 @@ async def fill_form_with_playwright(url: str, memory: Dict[str, str], websocket=
         active_sessions.pop("submit_form", None)
         await broadcast_status(websocket, None)
         
-    return "Visual Form Filling task complete!"
+    return f"Visual Form Filling task complete! Processed {pages_filled} pages."
 
 async def scout_unstop_hackathons(query: str = "hackathon", websocket=None) -> str:
     """
