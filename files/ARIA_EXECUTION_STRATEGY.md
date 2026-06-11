@@ -19,12 +19,10 @@ Five people. Five clean lanes. No lane touches another lane's files without a sy
 | Member | Role | Owns | Must Not Touch |
 |---|---|---|---|
 | **Kush** | Lead + Backend Orchestration | `backend/main.py`, agent loop, LLM routing, sub-agent manager, AWS integration | Frontend React files |
-| **Devansh** | Browser Agent Specialist | `backend/agent_tools.py`, Playwright engine, OVERLAY_JS, DOM+Vision hybrid | Memory module |
-| **Prakhyat** | Frontend + UI States | All React components, Zustand state machine, WebSocket client, Canvas components | Backend Python files |
-| **Agrani** | Memory + Research Agent | `backend/memory.py`, ChromaDB setup, episodic summarizer, research pipeline | Browser agent files |
-| **[5th Member]** | Character + Polish | VRM emotion controller, waveform visualizer, background world animation, Porcupine wake word | Agent logic files |
-
-If you don't have a 5th member, Prakhyat takes Character/Polish and a teammate picks up either wake word or research agent.
+| **Somya** | Browser Agent Specialist | `backend/agent_tools.py`, Playwright engine, OVERLAY_JS, DOM+Vision hybrid | Memory module |
+| **Agrani** | Frontend + UI States | All React components, Zustand state machine, WebSocket client, Canvas components | Backend Python files |
+| **Dimple** | Memory + Research Agent | `backend/memory.py`, ChromaDB setup, episodic summarizer, research pipeline | Browser agent files |
+| **Prithvi Raj Bais** | Character + Polish | VRM emotion controller, waveform visualizer, background world animation, Porcupine wake word | Agent logic files |
 
 ---
 
