@@ -7,3 +7,8 @@ numpy
 scipy
 cartesia
 playwright
+chromadb
+sentence-transformers
+tavily-python
+httpx
+beautifulsoup4
