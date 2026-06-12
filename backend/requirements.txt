@@ -8,3 +8,4 @@ scipy
 cartesia
 playwright
 boto3
+Pillow
