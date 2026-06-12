@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 
 const Icon = ({ type }) => {
   const paths = {
@@ -38,7 +38,12 @@ function Stars({ n }) {
   return <div className="store-stars" aria-label={`${n} out of 5 stars`}>{n}/5 rating</div>
 }
 
-export default function StorePage({ defaultTab = 'skins' }) {
+const CATALOG = [
+  ...SKINS.map((item) => ({ ...item, kind: 'skin' })),
+  ...SKILLS.map((item) => ({ ...item, kind: 'skill' })),
+]
+
+export default function StorePage({ defaultTab = 'all' }) {
   const [tab, setTab] = useState(defaultTab)
   const [installed, setInstalled] = useState(new Set(['gmail', 'form']))
 
@@ -48,69 +53,64 @@ export default function StorePage({ defaultTab = 'skins' }) {
 
   const handleInstall = (id) => setInstalled((p) => new Set([...p, id]))
 
+  const filteredCatalog = useMemo(() => {
+    if (tab === 'all') return CATALOG
+    if (tab === 'skins') return CATALOG.filter((item) => item.kind === 'skin')
+    return CATALOG.filter((item) => item.kind === 'skill')
+  }, [tab])
+
   return (
     <section className="panel-page store-page">
       <div className="panel-hero">
         <div>
           <p className="eyebrow">Marketplace</p>
-          <h1>{tab === 'skins' ? 'Skins' : 'Skills'}</h1>
-          <p>{tab === 'skins' ? 'Choose how ARIA appears in your workspace.' : 'Install task abilities without rebuilding the app.'}</p>
+          <h1>Companion Catalog</h1>
+          <p>One place to switch ARIA's look and expand what she can do.</p>
         </div>
         <div className="segmented-tabs">
-          <button id="tab-skins" className={tab === 'skins' ? 'active' : ''} onClick={() => setTab('skins')}>Skins</button>
-          <button id="tab-skills" className={tab === 'skills' ? 'active' : ''} onClick={() => setTab('skills')}>Skills</button>
+          <button id="tab-all" className={tab === 'all' ? 'active' : ''} onClick={() => setTab('all')}>All</button>
+          <button id="tab-skins" className={tab === 'skins' ? 'active' : ''} onClick={() => setTab('skins')}>Appearances</button>
+          <button id="tab-skills" className={tab === 'skills' ? 'active' : ''} onClick={() => setTab('skills')}>Abilities</button>
         </div>
       </div>
 
-      {tab === 'skins' && (
-        <div className="store-grid">
-          {SKINS.map((skin) => (
-            <article key={skin.id} className={`store-card ${skin.equipped ? 'equipped' : ''}`}>
-              <div className="skin-preview">
-                {skin.image ? <img src={skin.image} alt={skin.name} /> : <Icon type={skin.icon} />}
+      <div className="store-grid unified">
+        {filteredCatalog.map((item) => {
+          const isSkin = item.kind === 'skin'
+          const isInstalled = !isSkin && installed.has(item.id)
+          const isEquipped = isSkin && item.equipped
+          const titleBadge = isSkin ? 'Appearance' : 'Skill'
+
+          return (
+            <article key={item.id} className={`store-card ${isEquipped || isInstalled ? 'equipped' : ''}`}>
+              <div className={isSkin ? 'skin-preview' : 'skill-icon'}>
+                {isSkin ? (item.image ? <img src={item.image} alt={item.name} /> : <Icon type={item.icon} />) : <Icon type={item.icon} />}
               </div>
               <div className="store-card-body">
                 <div>
-                  <h3>{skin.name}</h3>
-                  <p>{skin.desc}</p>
+                  <span className="store-pill">{titleBadge}</span>
+                  <h3>{item.name}</h3>
+                  <p>{item.desc}</p>
+                  {!isSkin && (
+                    <>
+                      <small>by {item.dev}</small>
+                      <Stars n={item.stars} />
+                    </>
+                  )}
                 </div>
-                <button id={`skin-btn-${skin.id}`} className={skin.equipped ? 'secondary-btn disabled' : 'primary-btn'} disabled={skin.equipped}>
-                  {skin.equipped ? 'Equipped' : `Buy ${skin.price}`}
+                <button
+                  id={`${item.kind}-btn-${item.id}`}
+                  className={isEquipped || isInstalled ? 'secondary-btn disabled' : item.price ? 'secondary-btn' : 'primary-btn'}
+                  onClick={() => !isSkin && !isInstalled && !item.price && handleInstall(item.id)}
+                  disabled={isEquipped || isInstalled}
+                >
+                  {isEquipped ? 'Equipped' : isInstalled ? 'Installed' : item.price ? `Buy ${item.price}` : 'Install'}
                 </button>
               </div>
             </article>
-          ))}
-        </div>
-      )}
-
-      {tab === 'skills' && (
-        <div className="store-grid skills">
-          {SKILLS.map((skill) => {
-            const isInst = installed.has(skill.id)
-            return (
-              <article key={skill.id} className={`store-card skill-card ${isInst ? 'equipped' : ''}`}>
-                <div className="skill-icon"><Icon type={skill.icon} /></div>
-                <div className="store-card-body">
-                  <div>
-                    <h3>{skill.name}</h3>
-                    <p>{skill.desc}</p>
-                    <small>by {skill.dev}</small>
-                    <Stars n={skill.stars} />
-                  </div>
-                  <button
-                    id={`skill-btn-${skill.id}`}
-                    className={isInst ? 'secondary-btn disabled' : skill.price ? 'secondary-btn' : 'primary-btn'}
-                    onClick={() => !isInst && !skill.price && handleInstall(skill.id)}
-                    disabled={isInst}
-                  >
-                    {isInst ? 'Installed' : skill.price ? `Buy ${skill.price}` : 'Install'}
-                  </button>
-                </div>
-              </article>
-            )
-          })}
-        </div>
-      )}
+          )
+        })}
+      </div>
     </section>
   )
 }

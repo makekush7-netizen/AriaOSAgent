@@ -49,16 +49,15 @@ function ResponsiveAvatarController({ modelId, isWidget }) {
   const { camera, size } = useThree()
   const aspect = size.width / size.height
 
-  // Keep ARIA framed higher so the face stays visible in all states.
-  const baseZ = isWidget ? 2.2 : 2.45
+  const baseZ = isWidget ? 2.05 : 2.55
   const baseTargetX = 0
-  const baseTargetY = 1.48
-  const baseCameraY = isWidget ? 1.5 : 1.56
+  const baseTargetY = 1.62
+  const baseCameraY = isWidget ? 1.62 : 1.58
 
-  const femaleScale = 2.0
-  const maleScale = 1.75
-  const femalePosY = -1.05
-  const malePosY = -1.08
+  const femaleScale = 2.12
+  const maleScale = 1.72
+  const femalePosY = -0.82
+  const malePosY = -0.84
 
   const scale = modelId === 'male' ? maleScale : femaleScale
   const posY = modelId === 'male' ? malePosY : femalePosY
@@ -107,6 +106,7 @@ export default function AvatarZone({
 }) {
   const fullName = memoryData?.name || 'Endeavour'
   const firstName = fullName.split(' ')[0]
+  const taskSummary = taskLog.length > 0 ? taskLog[taskLog.length - 1] : (activeTask || 'Idle')
 
   return (
     <div className="avatar-zone" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -122,100 +122,27 @@ export default function AvatarZone({
 
       <div className="avatar-canvas-wrap" style={{ position: 'relative', flex: 1 }}>
         {!isWidget && (
-          <button id="bubble-toggle-btn" className="bubble-toggle" onClick={onToggleBubble} title="Bubble mode">o</button>
-        )}
-
-        {activeTask && !isWidget && (
-          <div style={{
-            position: 'absolute',
-            top: '20px',
-            right: '20px',
-            background: 'rgba(21, 19, 17, 0.85)',
-            backdropFilter: 'blur(20px)',
-            border: '1px solid var(--border)',
-            borderRadius: '16px',
-            padding: '16px',
-            width: '280px',
-            pointerEvents: 'auto',
-            zIndex: 10,
-            boxShadow: '0 8px 30px rgba(0,0,0,0.5)'
-          }}>
-            <h4 style={{ color: 'var(--gold-primary)', margin: '0 0 12px 0', fontSize: '13px', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
-              {taskLog.length > 0 ? 'EXECUTION PLAN' : 'ACTIVE TASK'}
-            </h4>
-
-            {taskLog.length > 0 ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {taskLog.map((task, i) => {
-                  const isLast = i === taskLog.length - 1
-                  return (
-                    <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', position: 'relative' }}>
-                      {i !== taskLog.length - 1 && (
-                        <div style={{ position: 'absolute', left: '5px', top: '15px', width: '1px', height: '100%', background: 'var(--border)' }} />
-                      )}
-                      <div style={{
-                        width: '10px',
-                        height: '10px',
-                        borderRadius: '50%',
-                        background: isLast ? 'var(--gold-primary)' : 'transparent',
-                        border: isLast ? 'none' : '2px solid var(--border)',
-                        marginTop: '4px',
-                        flexShrink: 0,
-                        zIndex: 2,
-                        boxShadow: isLast ? '0 0 8px var(--gold-glow)' : 'none'
-                      }} />
-                      <span style={{
-                        fontSize: '12px',
-                        color: isLast ? 'var(--text-primary)' : 'var(--text-secondary)',
-                        fontWeight: isLast ? '500' : '400',
-                        lineHeight: '1.4'
-                      }}>
-                        {task}
-                      </span>
-                    </div>
-                  )
-                })}
-              </div>
-            ) : (
-              <div style={{ fontSize: '12px', color: 'var(--text-primary)', lineHeight: '1.4' }}>
-                {activeTask}
-              </div>
-            )}
-
-            {activeTask && onStopAgent && (
-              <button
-                onClick={onStopAgent}
-                style={{
-                  marginTop: '16px',
-                  width: '100%',
-                  padding: '8px 12px',
-                  background: 'rgba(239, 68, 68, 0.15)',
-                  border: '1px solid rgba(239, 68, 68, 0.4)',
-                  color: '#ef4444',
-                  borderRadius: '8px',
-                  fontSize: '12px',
-                  fontWeight: '600',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '6px',
-                  transition: 'all 0.2s ease',
-                }}
-              >
-                <span style={{ fontSize: '14px', lineHeight: 1 }}>■</span> Terminate Active Agent
-              </button>
-            )}
-          </div>
+          <button id="bubble-toggle-btn" className="bubble-toggle" onClick={onToggleBubble} title="Bubble mode">
+            o
+          </button>
         )}
 
         <Canvas
-          camera={{ position: [0, 1.56, 2.45], fov: 32 }}
+          camera={{ position: [0, 1.68, 2.25], fov: 32 }}
           style={{ background: 'transparent' }}
         >
           <ResponsiveAvatarController modelId={modelId} isWidget={isWidget} />
         </Canvas>
+
+        {!isWidget && (
+          <div className="avatar-task-chip">
+            <span className="avatar-task-label">{taskLog.length > 0 ? 'Plan' : 'State'}</span>
+            <strong>{taskSummary}</strong>
+            {activeTask && onStopAgent && (
+              <button type="button" onClick={onStopAgent}>Stop</button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )

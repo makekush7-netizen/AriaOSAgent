@@ -387,20 +387,15 @@ export default function App() {
 
   // Compute character column width dynamically based on view and execution state
   const charWidth = currentView === 'home'
-    ? (appState === 'planning' ? '30%' : appState === 'execution' ? '20%' : '35%')
-    : '35%'
+    ? (appState === 'planning' ? '34%' : appState === 'execution' ? '28%' : '40%')
+    : '34%'
 
   return (
     <div className="app-container">
       {/* Animated Video Background */}
-      <video
-        className="app-bg-video"
-        src="/cherry_blossom_bg.mp4"
-        autoPlay
-        loop
-        muted
-        playsInline
-      />
+      <div className="app-bg-image" aria-hidden="true">
+        <img src="/lofi-bg.png" alt="" />
+      </div>
 
       {/* Sidebar Navigation */}
       <aside className="sidebar">
@@ -497,7 +492,7 @@ export default function App() {
             )}
 
             {currentView === 'store' && (
-              <StorePage defaultTab="skills" />
+              <StorePage defaultTab="all" />
             )}
 
           {currentView === 'settings' && (
