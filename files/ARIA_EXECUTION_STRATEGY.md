@@ -244,7 +244,7 @@ Requirements:
 
 ---
 
-### PROMPT C — Agrani: Memory System + Research Agent
+### PROMPT C — Dimple: Memory System + Research Agent
 
 ```
 Build the memory system and research pipeline for ARIA.

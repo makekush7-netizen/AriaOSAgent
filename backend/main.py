@@ -81,102 +81,27 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Local persistence path
-MEMORY_FILE_PATH = Path(__file__).parent / "memory.json"
+# ─── Memory: delegated to the new MemoryManager ─────────────────────────────
+# The MemoryManager in memory.py owns profile.json, ChromaDB, and all
+# key normalisation logic.  main.py no longer has its own load/save helpers.
 
-def sanitize_key_logic(k: str) -> str:
-    # 1. Standard keys mapping (case-insensitive checks)
-    k_lower = k.lower().strip()
-    if "email" in k_lower or "e-mail" in k_lower or "mail id" in k_lower:
-        return "email"
-    elif "phone" in k_lower or "mobile" in k_lower or "contact" in k_lower or "tel" in k_lower or "number" in k_lower:
-        if "roll" not in k_lower:
-            return "phone"
-    elif "roll" in k_lower or "reg" in k_lower or "registration" in k_lower or "id number" in k_lower:
-        return "rollNo"
-    elif "college" in k_lower or "university" in k_lower or "institute" in k_lower or "school" in k_lower:
-        return "college"
-    elif "dept" in k_lower or "department" in k_lower or "branch" in k_lower or "course" in k_lower or "stream" in k_lower:
-        return "department"
-    elif "name" in k_lower or "full name" in k_lower or "first name" in k_lower or "last name" in k_lower:
-        if k_lower != "name":
-            # Check if this matches a custom field (like father name, project name). If it has other words, treat as custom!
-            words = [w for w in re.split(r'[^a-z]+', k_lower) if w]
-            if len(words) == 1 or (len(words) == 2 and words[0] in ["full", "first", "last"]):
-                return "name"
-                
-    # 2. General custom key sanitization
-    clean = re.sub(r'[\s\xa0\u200b]+', ' ', k)
-    clean = clean.replace('*', '')
-    clean = clean.lower().strip()
-    clean = re.sub(r'[^a-z0-9]+', '_', clean).strip('_')
-    return clean
-
-# Load memory from file
-def load_memory() -> Dict[str, str]:
-    if MEMORY_FILE_PATH.exists():
-        try:
-            with open(MEMORY_FILE_PATH, "r", encoding="utf-8") as f:
-                raw_mem = json.load(f)
-            
-            sanitized_mem = {}
-            dirty = False
-            for k, v in raw_mem.items():
-                clean_k = sanitize_key_logic(k)
-                if clean_k != k:
-                    dirty = True
-                if clean_k:
-                    # If duplicate clean key, keep the longer/non-empty value
-                    if clean_k in sanitized_mem:
-                        old_v = sanitized_mem[clean_k]
-                        if not old_v and v:
-                            sanitized_mem[clean_k] = v
-                        elif v and len(str(v).strip()) > len(str(old_v).strip()):
-                            sanitized_mem[clean_k] = v
-                    else:
-                        sanitized_mem[clean_k] = v
-            
-            # If any key was cleaned, save the sanitized version immediately to clean up memory.json!
-            if dirty:
-                try:
-                    with open(MEMORY_FILE_PATH, "w", encoding="utf-8") as f:
-                        json.dump(sanitized_mem, f, indent=4, ensure_ascii=False)
-                except Exception as save_err:
-                    print(f"Error auto-sanitizing memory.json: {save_err}")
-            return sanitized_mem
-        except Exception as e:
-            print(f"Error loading memory: {e}")
-    return {"name": "", "email": ""}
-
-# Save memory to file
-def save_memory(data: dict):
-    try:
-        # Sanitize keys before saving
-        sanitized_data = {}
-        for k, v in data.items():
-            clean_k = sanitize_key_logic(k)
-            if clean_k and v:
-                sanitized_data[clean_k] = v
-        with open(MEMORY_FILE_PATH, "w", encoding="utf-8") as f:
-            json.dump(sanitized_data, f, indent=4, ensure_ascii=False)
-    except Exception as e:
-        print(f"Error saving memory: {e}")
-
-MEMORY_STORE = load_memory()
+def _get_memory_store() -> dict:
+    """Helper to get the current profile from MemoryManager (safe for LLM context)."""
+    if memory_mgr:
+        return memory_mgr.get_profile_for_llm()
+    return {}
 
 @app.get("/api/memory")
 def get_memory():
-    global MEMORY_STORE
-    MEMORY_STORE = load_memory()
-    return MEMORY_STORE
+    if memory_mgr:
+        return memory_mgr.get_profile()
+    return {}
 
 @app.put("/api/memory")
 def update_memory(data: dict):
-    global MEMORY_STORE
-    # Clean keys and filter out empty values
-    MEMORY_STORE = {sanitize_key_logic(k): v for k, v in data.items() if v and sanitize_key_logic(k)}
-    save_memory(MEMORY_STORE)
-    return MEMORY_STORE
+    if memory_mgr:
+        return memory_mgr.update_profile(data)
+    return data
 
 @app.post("/synthesize")
 def synthesize_endpoint(req: TTSRequest):
@@ -336,6 +261,7 @@ def _get_gemini_client():
 
 def invoke_gemini(user_message: str, memory: dict) -> dict:
     global CHAT_HISTORY
+    # Build tool definitions — include memory tools from MemoryManager
     tools_context = [
         {
             "name": "fill_form_with_memory",
@@ -361,8 +287,11 @@ def invoke_gemini(user_message: str, memory: dict) -> dict:
             "name": "research",
             "description": "Researches any topic using web search and AI synthesis. Saves a structured report to the Notepad. Use this when the user asks to research, investigate, find information about, or analyze any topic.",
             "args": {"query": "the research topic or question"}
-        }
+        },
     ]
+    # Inject memory/profile tools from the MemoryManager
+    if memory_mgr:
+        tools_context.extend(memory_mgr.get_tool_definitions())
 
     # Augment system prompt with relevant episodic context if available
     episodic_context = ""
@@ -374,7 +303,9 @@ def invoke_gemini(user_message: str, memory: dict) -> dict:
         except Exception:
             pass
 
-    system_prompt = SYSTEM_PROMPT + f"\nUSER CONTEXT (Memory): {json.dumps(memory)}" + episodic_context + "\n\nTOOLS AVAILABLE:\n" + json.dumps(tools_context, indent=2)
+    # Use the safe-for-LLM profile (no AWS creds / passwords)
+    safe_memory = memory_mgr.get_profile_for_llm() if memory_mgr else memory
+    system_prompt = SYSTEM_PROMPT + f"\nUSER CONTEXT (Memory): {json.dumps(safe_memory)}" + episodic_context + "\n\nTOOLS AVAILABLE:\n" + json.dumps(tools_context, indent=2)
     client = _get_gemini_client()
     if not client:
         return {"type": "text", "content": "[EMOTION: SAD] Gemini is not configured. Please set GEMINI_API_KEY."}
@@ -480,7 +411,18 @@ async def websocket_endpoint(websocket: WebSocket):
                     
                     # Run model call in a thread so it doesn't block asyncio
                     loop = asyncio.get_event_loop()
-                    response_data = await loop.run_in_executor(None, invoke_gemini, content, MEMORY_STORE)
+                    current_memory = _get_memory_store()
+                    response_data = await loop.run_in_executor(None, invoke_gemini, content, current_memory)
+
+                    # ── Auto-extract profile updates from user messages ──
+                    if memory_mgr:
+                        try:
+                            client = _get_gemini_client()
+                            profile_updates = memory_mgr.extract_profile_updates_from_message(content, client)
+                            if profile_updates:
+                                memory_mgr.update_profile(profile_updates)
+                        except Exception as _extract_err:
+                            print(f"[ARIA] Profile auto-extraction skipped: {_extract_err}")
                     
                     if response_data.get("type") == "tool_call":
                         tool_name = response_data.get("name")
@@ -505,7 +447,7 @@ async def websocket_endpoint(websocket: WebSocket):
                                 "permissions": ["Open browser window", "Read memory profile", "Write to memory.json"],
                                 "info_gaps": [
                                     field for field in ["teamCode", "projectTitle", "domain"]
-                                    if not MEMORY_STORE.get(field)
+                                    if not current_memory.get(field)
                                 ],
                             }
                             await websocket.send_json({"type": "planning_card", "plan": plan})
@@ -538,14 +480,16 @@ async def websocket_endpoint(websocket: WebSocket):
                                 })
 
                                 if orchestrator:
+                                    browser_memory = memory_mgr.get_profile() if memory_mgr else current_memory
                                     await orchestrator.spawn_agent(
                                         name="BrowserBot",
-                                        coro=fill_form_with_playwright(form_url, MEMORY_STORE, websocket),
+                                        coro=fill_form_with_playwright(form_url, browser_memory, websocket),
                                         websocket=websocket,
                                         accent_color="#10b981",
                                     )
                                 else:
-                                    asyncio.create_task(fill_form_with_playwright(form_url, MEMORY_STORE, websocket))
+                                    browser_memory = memory_mgr.get_profile() if memory_mgr else current_memory
+                                    asyncio.create_task(fill_form_with_playwright(form_url, browser_memory, websocket))
 
                         elif tool_name == "research":
                             query = tool_args.get("query", "")
@@ -682,6 +626,21 @@ async def websocket_endpoint(websocket: WebSocket):
                             await websocket.send_json({"type": "task_update", "task": None})
                     else:
                         response_text = response_data.get("content", "")
+
+                        # ── Handle memory tool calls ─────────────────────
+                        if response_data.get("type") == "tool_call":
+                            tool_name = response_data.get("name")
+                            tool_args = response_data.get("args", {})
+
+                            if tool_name == "update_user_profile" and memory_mgr:
+                                updates = tool_args.get("updates", tool_args)
+                                memory_mgr.update_profile(updates)
+                                response_text = "[EMOTION: HAPPY] Got it! I've updated your profile with the new information."
+
+                            elif tool_name == "get_user_profile" and memory_mgr:
+                                profile = memory_mgr.get_profile_for_llm()
+                                response_text = f"[EMOTION: HAPPY] Here's what I have saved about you:\n{json.dumps(profile, indent=2)}"
+
                         await websocket.send_json({
                             "type": "chat_response",
                             "content": response_text,
