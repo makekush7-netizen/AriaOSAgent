@@ -98,32 +98,57 @@ class ResearchAgent:
             else:
                 print("[ResearchAgent] TAVILY_API_KEY not set in .env — search will be skipped.")
 
-    def _get_gemini_client(self):
+    def _get_bedrock_client(self):
         try:
-            import google.genai as genai
-            api_key = os.getenv("GEMINI_API_KEY", "").strip()
-            if not api_key:
+            import boto3
+            aws_access_key_id = os.getenv("AWS_ACCESS_KEY_ID", "").strip()
+            aws_secret_access_key = os.getenv("AWS_SECRET_access_key", "").strip()
+            if not aws_secret_access_key:
+                 aws_secret_access_key = os.getenv("AWS_SECRET_ACCESS_KEY", "").strip()
+            region_name = os.getenv("AWS_REGION", "us-east-1").strip()
+            
+            if not aws_access_key_id or not aws_secret_access_key:
                 return None
-            return genai.Client(api_key=api_key)
+                
+            client = boto3.client(
+                service_name='bedrock-runtime',
+                region_name=region_name,
+                aws_access_key_id=aws_access_key_id,
+                aws_secret_access_key=aws_secret_access_key,
+            )
+            return client
         except Exception:
             return None
 
     def _llm(self, prompt: str, max_tokens: int = 1000) -> str:
-        """Simple single-turn Gemini call."""
-        client = self._get_gemini_client()
+        """Simple single-turn Bedrock Nova call."""
+        client = self._get_bedrock_client()
         if not client:
             return ""
         try:
-            response = client.models.generate_content(
-                model=os.getenv("GEMINI_MODEL", "gemini-1.5-flash"),
-                contents=[{"role": "user", "parts": [{"text": prompt}]}],
-                config={"max_output_tokens": max_tokens, "temperature": 0.3},
+            model_name = os.getenv("LLM_MODEL", "amazon.nova-pro-v1:0").strip()
+            messages = [{"role": "user", "content": [{"text": prompt}]}]
+            
+            response = client.converse(
+                modelId=model_name,
+                messages=messages,
+                inferenceConfig={
+                    "maxTokens": max_tokens,
+                    "temperature": 0.3
+                }
             )
-            text = (response.text or "").strip()
+            
+            text_content = ""
+            output_message = response.get('output', {}).get('message', {})
+            for content_block in output_message.get('content', []):
+                if 'text' in content_block:
+                    text_content += content_block['text']
+                    
+            text_content = text_content.strip()
             # Strip code fences if present
-            if text.startswith("```"):
-                text = re.sub(r'^```[a-z]*\n?', '', text).rstrip('`').strip()
-            return text
+            if text_content.startswith("```"):
+                text_content = re.sub(r'^```[a-z]*\n?', '', text_content).rstrip('`').strip()
+            return text_content
         except Exception as e:
             print(f"[ResearchAgent] LLM error: {e}")
             return ""

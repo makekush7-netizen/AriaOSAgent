@@ -1,5 +1,9 @@
-import json
+import sys
 import asyncio
+if sys.platform == 'win32':
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
+import json
 import re
 import uuid
 import time
@@ -12,19 +16,12 @@ import os
 import sys
 import tempfile
 from pathlib import Path
-import google.genai as genai
+import boto3
+from botocore.exceptions import ClientError
 from dotenv import load_dotenv
 from cartesia import Cartesia
 
 load_dotenv(dotenv_path=Path(__file__).parent / ".env")
-
-# ── Unified LLM router (Bedrock → Gemini fallback) ──
-try:
-    from llm_router import llm_call, get_active_provider_info
-except Exception as _lr_err:
-    print(f"[ARIA] llm_router import failed: {_lr_err}")
-    llm_call = None
-    get_active_provider_info = None
 
 # ── New agentic modules ───────────────────────────────────────────────────────
 try:
@@ -44,12 +41,6 @@ try:
 except Exception as _res_err:
     print(f"[ARIA] research import failed: {_res_err}")
     research_agent = None
-
-try:
-    from certificate_generator import generate_certificates_from_csv
-except Exception as _cert_err:
-    print(f"[ARIA] certificate_generator import failed: {_cert_err}")
-    generate_certificates_from_csv = None
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Cartesia TTS configuration
@@ -280,29 +271,6 @@ def delete_note(filename: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# ── Certificate Generation Endpoint ──────────────────────────────────────────
-class CertRequest(BaseModel):
-    csv_path: str
-    course_name: str = "ARIA Hackathon"
-    template_path: str = ""
-    output_dir: str = ""
-
-@app.post("/api/generate-certificates")
-async def generate_certificates_endpoint(req: CertRequest):
-    """Batch-generate certificates from a CSV. Returns a summary string."""
-    if not generate_certificates_from_csv:
-        raise HTTPException(status_code=500, detail="certificate_generator module not loaded.")
-    try:
-        result = await generate_certificates_from_csv(
-            csv_path=req.csv_path,
-            course_name=req.course_name,
-            template_path=req.template_path or None,
-            output_dir=req.output_dir or None,
-        )
-        return {"status": "ok", "message": result}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
 SYSTEM_PROMPT = """You are ARIA, a 3D AI Avatar living on this website.
 
 CORE IDENTITY:
@@ -333,12 +301,15 @@ BEHAVIOR:
 2. If referring to user details, use their memory context if relevant.
 
 TOOL USAGE:
-1. If the user asks you to perform an action (like filling a form or opening a website) BUT does not provide the required URL, DO NOT GUESS OR HALLUCINATE A LINK. Instead, just ask the user to provide the link in a friendly conversational manner.
-2. Only call a tool when you have all the specific information required to use it correctly.
+1. If the user asks you to perform an action (like filling a form or browsing a website) but does not provide a URL, you CAN guess the URL for well-known websites (like https://www.irctc.co.in or https://www.amazon.com) or just use https://www.google.com as a starting point.
+2. DO NOT ask the user clarifying questions BEFORE launching the `browse_web` tool. If the user asks you to book a train ticket, search for a job, or buy a product, trigger the `browse_web` tool IMMEDIATELY with whatever information you have. The browser agent is intelligent and will ask the user for any missing details *during* the web session.
+3. Only call other tools when you have all the specific information required to use them correctly.
 
 RESPONSE FORMAT:
 - For tool calls, respond with a single JSON object ONLY (no markdown), like:
     {"type":"tool_call","name":"fill_form_with_memory","args":{"url":"https://example.com"}}
+- NEVER use [ACTION: tool_name] for executing tools! The [ACTION: ...] tags are STRICTLY for physical 3D avatar animations (like DANCE).
+- If you need to trigger a tool, you MUST use the JSON format.
 - For normal replies, respond with plain text only.
 """
 
@@ -353,25 +324,172 @@ def _strip_code_fences(text: str) -> str:
         clean = clean[:-3].strip()
     return clean.strip()
 
+KNOWN_TOOL_NAMES = {"browse_web", "fill_form_with_memory", "deep_research", "scout_hackathons", "open_desktop_app", "open_website"}
+
+def _extract_json_objects(text: str) -> list:
+    results = []
+    start_indices = [i for i, char in enumerate(text) if char == '{']
+    for start in start_indices:
+        brace_count = 0
+        in_string = False
+        escape = False
+        for i in range(start, len(text)):
+            char = text[i]
+            if char == '"' and not escape:
+                in_string = not in_string
+            if not in_string:
+                if char == '{':
+                    brace_count += 1
+                elif char == '}':
+                    brace_count -= 1
+            escape = (char == '\\' and not escape)
+            
+            if brace_count == 0 and not in_string:
+                json_str = text[start:i+1]
+                try:
+                    obj = json.loads(json_str)
+                    if isinstance(obj, dict):
+                        results.append(obj)
+                except Exception:
+                    pass
+                break
+    return results
+
+def _is_tool_shaped(data: dict) -> bool:
+    """Check if a JSON object looks like a tool call vs random code JSON."""
+    if data.get("type") == "tool_call" and "name" in data:
+        return True
+    t = data.get("type", "")
+    if t in KNOWN_TOOL_NAMES:
+        return True
+    if "name" in data and data.get("name") in KNOWN_TOOL_NAMES and "args" in data:
+        return True
+    return False
+
 def _parse_tool_call(text: str) -> dict | None:
+    # 1. Extract all JSON objects and find the one that looks like a tool call
+    objects = _extract_json_objects(text)
+    
+    # First pass: look for explicitly tool-shaped objects
+    for data in objects:
+        if not _is_tool_shaped(data):
+            continue
+        if data.get("type") == "tool_call" and "name" in data:
+            return {"type": "tool_call", "name": data["name"], "args": data.get("args", {})}
+        if data.get("type") in KNOWN_TOOL_NAMES:
+            return {"type": "tool_call", "name": data["type"], "args": data.get("args", {})}
+        if data.get("name") in KNOWN_TOOL_NAMES and "args" in data:
+            return {"type": "tool_call", "name": data["name"], "args": data.get("args", {})}
+
+    # 2. Fallback: Try parsing the stripped clean text
     clean = _strip_code_fences(text)
     if not clean.startswith("{") or not clean.endswith("}"):
         return None
     try:
         data = json.loads(clean)
+        if isinstance(data, dict) and _is_tool_shaped(data):
+            if data.get("type") == "tool_call" and "name" in data:
+                return {"type": "tool_call", "name": data["name"], "args": data.get("args", {})}
+            if data.get("type") in KNOWN_TOOL_NAMES:
+                return {"type": "tool_call", "name": data["type"], "args": data.get("args", {})}
+            if data.get("name") in KNOWN_TOOL_NAMES and "args" in data:
+                return {"type": "tool_call", "name": data["name"], "args": data.get("args", {})}
     except Exception:
-        return None
-    if isinstance(data, dict) and data.get("type") == "tool_call":
-        return data
+        pass
+
     return None
 
-def _get_gemini_client():
-    api_key = os.getenv("GEMINI_API_KEY", "").strip()
-    if not api_key:
+def _get_bedrock_client():
+    try:
+        aws_access_key_id = os.getenv("AWS_ACCESS_KEY_ID", "").strip()
+        aws_secret_access_key = os.getenv("AWS_SECRET_access_key", "").strip()
+        if not aws_secret_access_key:
+             aws_secret_access_key = os.getenv("AWS_SECRET_ACCESS_KEY", "").strip()
+        region_name = os.getenv("AWS_REGION", "us-east-1").strip()
+        
+        if not aws_access_key_id or not aws_secret_access_key:
+            return None
+            
+        client = boto3.client(
+            service_name='bedrock-runtime',
+            region_name=region_name,
+            aws_access_key_id=aws_access_key_id,
+            aws_secret_access_key=aws_secret_access_key,
+        )
+        return client
+    except Exception as e:
+        print(f"[ARIA] Bedrock client error: {e}")
         return None
-    return genai.Client(api_key=api_key)
 
-def invoke_gemini(user_message: str, memory: dict) -> dict:
+def _invoke_gemini_fallback(user_message: str, memory: dict, tools_context: list) -> dict:
+    """Fallback LLM call using Gemini when Bedrock is unavailable."""
+    global CHAT_HISTORY
+    try:
+        api_key = os.getenv("GEMINI_API_KEY", "").strip()
+        if not api_key:
+            return {"type": "text", "content": "[EMOTION: SAD] No LLM configured. Please set AWS keys or GEMINI_API_KEY in .env"}
+
+        # Try google-genai SDK
+        try:
+            from google import genai as _genai
+            client = _genai.Client(api_key=api_key)
+            model_name = "gemini-2.0-flash"
+
+            system_prompt = SYSTEM_PROMPT + f"\nUSER CONTEXT (Memory): {json.dumps(memory)}" + "\n\nTOOLS AVAILABLE:\n" + json.dumps(tools_context, indent=2)
+            history_msgs = []
+            for item in CHAT_HISTORY[-15:]:
+                role = item["role"]
+                if role == "model":
+                    role = "assistant"
+                parts = item.get("parts", [])
+                text = parts[0] if parts and isinstance(parts[0], str) else ""
+                history_msgs.append({"role": role, "parts": [{"text": text}]})
+            history_msgs.append({"role": "user", "parts": [{"text": user_message}]})
+
+            response = client.models.generate_content(
+                model=model_name,
+                contents=history_msgs,
+                config={"system_instruction": system_prompt, "max_output_tokens": 800, "temperature": 0.3},
+            )
+            text_content = (response.text or "").strip()
+        except Exception:
+            # Try legacy google.generativeai SDK
+            import google.generativeai as genai_legacy
+            genai_legacy.configure(api_key=api_key)
+            model = genai_legacy.GenerativeModel(
+                "gemini-1.5-flash",
+                system_instruction=SYSTEM_PROMPT + f"\nUSER CONTEXT: {json.dumps(memory)}" + "\n\nTOOLS:\n" + json.dumps(tools_context, indent=2)
+            )
+            history_for_gemini = []
+            for item in CHAT_HISTORY[-15:]:
+                role = "model" if item["role"] in ["model", "assistant"] else "user"
+                parts = item.get("parts", [])
+                text = parts[0] if parts and isinstance(parts[0], str) else ""
+                history_for_gemini.append({"role": role, "parts": [text]})
+            chat = model.start_chat(history=history_for_gemini)
+            response = chat.send_message(user_message)
+            text_content = (response.text or "").strip()
+
+        text_content = re.sub(r'<thinking>.*?</thinking>', '', text_content, flags=re.DOTALL | re.IGNORECASE).strip()
+        text_content = re.sub(r'<thought>.*?</thought>', '', text_content, flags=re.DOTALL | re.IGNORECASE).strip()
+
+        tool_call = _parse_tool_call(text_content)
+        if tool_call:
+            CHAT_HISTORY.append({"role": "user", "parts": [user_message]})
+            CHAT_HISTORY.append({"role": "model", "parts": [f"[tool: {tool_call.get('name')}]"]})
+            return {"type": "tool_call", "name": tool_call.get("name"), "args": tool_call.get("args", {})}
+
+        CHAT_HISTORY.append({"role": "user", "parts": [user_message]})
+        CHAT_HISTORY.append({"role": "model", "parts": [text_content]})
+        if len(CHAT_HISTORY) > 30:
+            CHAT_HISTORY = CHAT_HISTORY[-30:]
+        return {"type": "text", "content": text_content}
+    except Exception as e:
+        print(f"[Gemini Fallback Error]: {e}")
+        return {"type": "text", "content": f"[EMOTION: SAD] I encountered an error with the Gemini fallback: {e}"}
+
+
+def invoke_llm(user_message: str, memory: dict) -> dict:
     global CHAT_HISTORY
     tools_context = [
         {
@@ -380,14 +498,14 @@ def invoke_gemini(user_message: str, memory: dict) -> dict:
             "args": {"url": "absolute HTTP/HTTPS URL"}
         },
         {
+            "name": "browse_web",
+            "description": "Opens ANY website in a real browser and performs any goal: scraping data, booking tickets, navigating pages, clicking buttons, searching, reading content, filling forms, interacting with any site. Use this for: opening IRCTC, booking trains, scraping news, checking prices, searching LinkedIn, anything on any website.",
+            "args": {"url": "absolute HTTP/HTTPS URL of the starting page", "goal": "exactly what to do on this site (e.g. 'book a train ticket from Delhi to Mumbai', 'scrape latest news headlines', 'search for Python jobs')"}
+        },
+        {
             "name": "open_desktop_app",
             "description": "Opens desktop applications on Windows (notepad, calculator, paint, calendar, clock, alarm, cmd, explorer).",
             "args": {"app_name": "one of: notepad, calculator, paint, calendar, clock, alarm, cmd, explorer"}
-        },
-        {
-            "name": "open_website",
-            "description": "Opens a website URL in the default browser.",
-            "args": {"url": "absolute HTTP/HTTPS URL"}
         },
         {
             "name": "scout_hackathons",
@@ -412,46 +530,55 @@ def invoke_gemini(user_message: str, memory: dict) -> dict:
             pass
 
     system_prompt = SYSTEM_PROMPT + f"\nUSER CONTEXT (Memory): {json.dumps(memory)}" + episodic_context + "\n\nTOOLS AVAILABLE:\n" + json.dumps(tools_context, indent=2)
+    client = _get_bedrock_client()
+    if not client:
+        # Fallback to Gemini when Bedrock is not configured
+        print("[ARIA] Bedrock not configured — falling back to Gemini")
+        return _invoke_gemini_fallback(user_message, memory, tools_context)
 
     try:
-        # Build message list for the unified router
+        model_name = os.getenv("LLM_MODEL", "amazon.nova-pro-v1:0").strip()
         history = CHAT_HISTORY[-15:]
         messages = []
         for item in history:
-            role = "assistant" if item["role"] == "model" else item["role"]
-            messages.append({"role": role, "content": item["parts"][0]})
-        messages.append({"role": "user", "content": user_message})
-
-        # ── Route through unified LLM (Bedrock → Gemini fallback) ──
-        if llm_call:
-            text_content = llm_call(
-                system_prompt=system_prompt,
-                messages=messages,
-                task_type="reasoning",
-            )
-        else:
-            # Hard fallback: direct Gemini call if router failed to import
-            client = _get_gemini_client()
-            if not client:
-                return {"type": "text", "content": "[EMOTION: SAD] No LLM provider configured. Set GEMINI_API_KEY or AWS credentials in .env"}
-            model_name = os.getenv("GEMINI_MODEL", "gemini-1.5-flash").strip()
-            contents = []
-            for item in CHAT_HISTORY[-15:]:
-                parts = [genai.types.Part.from_text(text=p) for p in item["parts"]]
-                contents.append(genai.types.Content(role=item["role"], parts=parts))
-            contents.append(genai.types.Content(role="user", parts=[genai.types.Part.from_text(text=user_message)]))
-            response = client.models.generate_content(
-                model=model_name,
-                contents=contents,
-                config=genai.types.GenerateContentConfig(system_instruction=system_prompt)
-            )
-            text_content = (response.text or "").strip()
+            role = item["role"]
+            if role == "model":
+                role = "assistant"
+            
+            # Combine parts into a single text string for Bedrock standard format
+            text_parts = [p for p in item.get("parts", []) if isinstance(p, str)]
+            if not text_parts:
+                text_parts = [""]
+            messages.append({"role": role, "content": [{"text": text_parts[0]}]})
+            
+        messages.append({"role": "user", "content": [{"text": user_message}]})
+        
+        system_prompts = [{"text": system_prompt}]
+        
+        response = client.converse(
+            modelId=model_name,
+            messages=messages,
+            system=system_prompts,
+            inferenceConfig={
+                "maxTokens": 1000,
+                "temperature": 0.3
+            }
+        )
+        
+        text_content = ""
+        output_message = response.get('output', {}).get('message', {})
+        for content_block in output_message.get('content', []):
+            if 'text' in content_block:
+                text_content += content_block['text']
+                
+        text_content = text_content.strip()
 
         tool_call = _parse_tool_call(text_content)
         if tool_call:
             tool_name = tool_call.get("name")
             tool_args = tool_call.get("args", {})
             tool_desc = f"[I decided to trigger the tool '{tool_name}' with arguments: {json.dumps(tool_args)}]"
+
             CHAT_HISTORY.append({"role": "user", "parts": [user_message]})
             CHAT_HISTORY.append({"role": "model", "parts": [tool_desc]})
             return {"type": "tool_call", "name": tool_name, "args": tool_args}
@@ -466,16 +593,8 @@ def invoke_gemini(user_message: str, memory: dict) -> dict:
 
         return {"type": "text", "content": text_content}
     except Exception as e:
-        print(f"LLM Router Error: {e}")
-        return {"type": "text", "content": f"[EMOTION: SAD] I ran into an error: {e}"}
-
-# ── LLM Status Endpoint ──────────────────────────────────────────
-@app.get("/api/llm-status")
-async def get_llm_status():
-    """Returns which LLM provider is currently active."""
-    if get_active_provider_info:
-        return get_active_provider_info()
-    return {"configured_provider": "gemini", "bedrock_available": False, "gemini_available": bool(os.getenv("GEMINI_API_KEY"))}
+        print(f"Gemini Error: {e}")
+        return {"type": "text", "content": f"[EMOTION: SAD] I ran into an error processing your request: {e}"}
 
 class ConnectionManager:
     def __init__(self):
@@ -512,11 +631,7 @@ async def websocket_endpoint(websocket: WebSocket):
     print("[WS] Client connected")
     try:
         while True:
-            try:
-                msg_type = await websocket.receive()
-            except Exception as _ws_recv_err:
-                print(f"[WS] Receive error (client likely disconnected): {_ws_recv_err}")
-                break
+            msg_type = await websocket.receive()
             if "text" in msg_type:
                 data = json.loads(msg_type["text"])
                 msg_type_str = data.get("type")
@@ -524,6 +639,23 @@ async def websocket_endpoint(websocket: WebSocket):
                 if msg_type_str == "chat_message":
                     content = data.get("content", "")
                     print(f"[WS] User says: {content}")
+
+                    # ── HITL interception: if an agent is waiting for user input,
+                    # route this chat reply directly to the agent ────────────────
+                    try:
+                        from agent_tools import active_sessions
+                        hitl_event = active_sessions.get("hitl_input")
+                        if hitl_event and isinstance(hitl_event, asyncio.Event) and not hitl_event.is_set():
+                            active_sessions["hitl_input_response"] = {"value": content, "allowed": True}
+                            hitl_event.set()
+                            await websocket.send_json({
+                                "type": "chat_response",
+                                "content": f"[EMOTION: HAPPY] Got it! Continuing with: **{content}**",
+                                "timestamp": data.get("timestamp")
+                            })
+                            continue
+                    except Exception as _hitl_err:
+                        print(f"[HITL interception error]: {_hitl_err}")
                     
                     # Handle reset commands
                     if content.strip().lower() in ["reset", "reset chat", "clear chat", "clear memory"]:
@@ -541,12 +673,12 @@ async def websocket_endpoint(websocket: WebSocket):
                     
                     # Run model call in a thread so it doesn't block asyncio
                     loop = asyncio.get_event_loop()
-                    response_data = await loop.run_in_executor(None, invoke_gemini, content, MEMORY_STORE)
+                    response_data = await loop.run_in_executor(None, invoke_llm, content, MEMORY_STORE)
                     
                     if response_data.get("type") == "tool_call":
                         tool_name = response_data.get("name")
                         tool_args = response_data.get("args")
-                        
+                        print(f"[WS] Tool call detected: {tool_name} with args: {json.dumps(tool_args)[:200]}")
                         if tool_name == "fill_form_with_memory":
                             form_url = tool_args.get("url")
 
@@ -571,16 +703,8 @@ async def websocket_endpoint(websocket: WebSocket):
                             }
                             await websocket.send_json({"type": "planning_card", "plan": plan})
 
-                            # ── Wait for user approval (up to 60s) ───────────
-                            from agent_tools import active_sessions
-                            plan_event = asyncio.Event()
-                            active_sessions[f"plan_{plan_id}"] = plan_event
-                            try:
-                                await asyncio.wait_for(plan_event.wait(), timeout=60.0)
-                                approved = active_sessions.pop(f"plan_{plan_id}_approved", True)
-                            except asyncio.TimeoutError:
-                                approved = True  # Auto-approve after timeout so demo doesn't stall
-                            active_sessions.pop(f"plan_{plan_id}", None)
+                            # Auto-approve immediately for now until frontend UI is ready
+                            approved = True
 
                             if not approved:
                                 await websocket.send_json({
@@ -663,12 +787,72 @@ async def websocket_endpoint(websocket: WebSocket):
                                 )
                             else:
                                 asyncio.create_task(scout_unstop_hackathons(query, websocket))
+
+                        elif tool_name == "browse_web":
+                            # ── Universal Web Browser Agent ────────────────────
+                            browse_url = tool_args.get("url", "https://www.google.com")
+                            browse_goal = tool_args.get("goal", "Browse and extract relevant information from this page")
+
+                            # Ensure URL has scheme
+                            if not browse_url.startswith("http"):
+                                browse_url = "https://" + browse_url
+
+                            # Build planning card for browser task
+                            plan_id = str(uuid.uuid4())[:8]
+                            plan = {
+                                "id": plan_id,
+                                "summary": f"Open {browse_url} and: {browse_goal}",
+                                "steps": [
+                                    {"id": 1, "label": "Launch Chromium browser with persistent session", "status": "pending"},
+                                    {"id": 2, "label": f"Navigate to {browse_url}", "status": "pending"},
+                                    {"id": 3, "label": "Analyze page with Gemini Vision", "status": "pending"},
+                                    {"id": 4, "label": "Execute actions (click, type, scroll, scrape)", "status": "pending"},
+                                    {"id": 5, "label": "Save results to Notepad if data extracted", "status": "pending"},
+                                ],
+                                "permissions": ["Open browser window", "Make web requests", "Read page content"],
+                                "info_gaps": [],
+                            }
+                            await websocket.send_json({"type": "planning_card", "plan": plan})
+
+                            # Auto-approve immediately for now until frontend UI is ready
+                            approved = True
+
+                            if not approved:
+                                await websocket.send_json({
+                                    "type": "chat_response",
+                                    "content": "[EMOTION: HAPPY] No problem! I've cancelled the browser task.",
+                                    "timestamp": data.get("timestamp")
+                                })
+                            else:
+                                from agent_tools import browse_and_act
+                                agent_id = str(uuid.uuid4())[:8]
+                                response_text = f"[EMOTION: HAPPY] I'm launching WebAgent to open {browse_url} and {browse_goal.lower()}!"
+                                await websocket.send_json({
+                                    "type": "chat_response",
+                                    "content": response_text,
+                                    "timestamp": data.get("timestamp")
+                                })
+
+                                if orchestrator:
+                                    await orchestrator.spawn_agent(
+                                        name="WebAgent",
+                                        coro=browse_and_act(browse_url, browse_goal, MEMORY_STORE, websocket, agent_id),
+                                        websocket=websocket,
+                                        accent_color="#3b82f6",
+                                    )
+                                else:
+                                    async def _run_browse():
+                                        await browse_and_act(browse_url, browse_goal, MEMORY_STORE, websocket, agent_id)
+                                    asyncio.create_task(_run_browse())
+
+
                         elif tool_name == "open_desktop_app":
                             app_name = tool_args.get("app_name")
                             await websocket.send_json({
                                 "type": "task_update",
                                 "task": f"Opening {app_name}..."
                             })
+
                             
                             import subprocess
                             import os
@@ -811,15 +995,27 @@ async def websocket_endpoint(websocket: WebSocket):
                 # print(f"[WS] Received audio chunk: {len(audio_data)} bytes")
                 
     except WebSocketDisconnect:
-        pass
-    finally:
         manager.disconnect(websocket)
         print("[WS] Client disconnected")
-        from agent_tools import active_sessions
-        current_task = active_sessions.get("current_task")
-        if current_task:
-            print("[WS] Client disconnected: Cancelling active browser automation task.")
-            current_task.cancel()
+    except RuntimeError as e:
+        if "disconnect message has been received" in str(e):
+            manager.disconnect(websocket)
+            print("[WS] Client disconnected (RuntimeError)")
+        else:
+            print(f"[WS] RuntimeError: {e}")
+            manager.disconnect(websocket)
+    except Exception as e:
+        print(f"[WS] Unexpected error: {e}")
+        manager.disconnect(websocket)
+    finally:
+        try:
+            from agent_tools import active_sessions
+            current_task = active_sessions.get("current_task")
+            if current_task:
+                print("[WS] Client disconnected: Cancelling active browser automation task.")
+                current_task.cancel()
+        except Exception:
+            pass
 
 if __name__ == "__main__":
     import uvicorn

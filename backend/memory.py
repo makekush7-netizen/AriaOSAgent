@@ -203,7 +203,20 @@ class MemoryManager:
             return " | ".join(lines)
 
         try:
-            import google.genai as genai
+            import boto3
+            aws_access_key_id = os.getenv("AWS_ACCESS_KEY_ID", "").strip()
+            aws_secret_access_key = os.getenv("AWS_SECRET_access_key", "").strip()
+            if not aws_secret_access_key:
+                 aws_secret_access_key = os.getenv("AWS_SECRET_ACCESS_KEY", "").strip()
+            region_name = os.getenv("AWS_REGION", "us-east-1").strip()
+            
+            client = boto3.client(
+                service_name='bedrock-runtime',
+                region_name=region_name,
+                aws_access_key_id=aws_access_key_id,
+                aws_secret_access_key=aws_secret_access_key,
+            )
+            
             conversation_text = "\n".join(
                 [f"{m.get('role','?').upper()}: {m.get('content','')}" for m in messages[-20:]]
             )
@@ -213,11 +226,26 @@ class MemoryManager:
                 "what worked and what didn't. Be concise (max 100 words).\n\n"
                 f"Conversation:\n{conversation_text}"
             )
-            response = llm_client.models.generate_content(
-                model="gemini-1.5-flash",
-                contents=[{"role": "user", "parts": [{"text": prompt}]}],
+            
+            model_name = os.getenv("LLM_MODEL", "amazon.nova-pro-v1:0").strip()
+            messages = [{"role": "user", "content": [{"text": prompt}]}]
+            
+            response = client.converse(
+                modelId=model_name,
+                messages=messages,
+                inferenceConfig={
+                    "maxTokens": 1000,
+                    "temperature": 0.3
+                }
             )
-            return (response.text or "").strip()
+            
+            text_content = ""
+            output_message = response.get('output', {}).get('message', {})
+            for content_block in output_message.get('content', []):
+                if 'text' in content_block:
+                    text_content += content_block['text']
+                    
+            return text_content.strip()
         except Exception as e:
             print(f"[MemoryManager] Session summarize error: {e}")
             return ""

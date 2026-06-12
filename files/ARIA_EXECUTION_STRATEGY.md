@@ -39,28 +39,28 @@ PHASE 0 (Today, June 11 — by midnight)
 └── All 5 members have the repo running locally
 
 PHASE 1 (June 12 — Core Agent Working)
-├── [Devansh] Playwright browser agent: DOM overlay + autofill from memory.json
-├── [Devansh] Vision fallback: screenshot → LLM → coordinate action
-├── [Agrani] Memory Layer 3: profile.json update from conversation
-├── [Agrani] Memory Layer 2: ChromaDB episode storage + retrieval
+├── [Somya] Playwright browser agent: DOM overlay + autofill from memory.json
+├── [Somya] Vision fallback: screenshot → LLM → coordinate action
+├── [Dimple] Memory Layer 3: profile.json update from conversation
+├── [Dimple] Memory Layer 2: ChromaDB episode storage + retrieval
 ├── [Kush] Sub-agent spawn: BrowserBot dispatches and reports back via WebSocket
-├── [Prakhyat] 5 app states: Zustand store + state transitions working
-└── [5th] VRM emotion states: idle/thinking/listening/speaking/success/error
+├── [Agrani] 5 app states: Zustand store + state transitions working
+└── [Prithvi Raj Bais] VRM emotion states: idle/thinking/listening/speaking/success/error
 
 PHASE 2 (June 13 — Integration + Canvases)
 ├── [Kush] End-to-end flow: user message → planning card → approval → BrowserBot executes → HITL fires → completion
-├── [Prakhyat] Form Canvas rendering with live field status
-├── [Prakhyat] HITL modal: blocks execution, waits for user input, resumes
-├── [Agrani] Research pipeline: Tavily search → fetch → synthesize → Research Canvas
-├── [Devansh] Certificate generation: PIL + openpyxl + output folder
-├── [5th] Background world: particle animation + theme tokens
-└── [5th] Porcupine wake word: WASM integration, test with character name
+├── [Agrani] Form Canvas rendering with live field status
+├── [Agrani] HITL modal: blocks execution, waits for user input, resumes
+├── [Dimple] Research pipeline: Tavily search → fetch → synthesize → Research Canvas
+├── [Somya] Certificate generation: PIL + openpyxl + output folder
+├── [Prithvi Raj Bais] Background world: particle animation + theme tokens
+└── [Prithvi Raj Bais] Porcupine wake word: WASM integration, test with character name
 
 PHASE 3 (June 14 — Polish + Demo Prep)
 ├── [All] Integration testing: run all demo scenarios 3 times each
 ├── [Kush] Error handling: every failure state has a friendly ARIA response
-├── [Prakhyat] Sub-agent chip: heartbeat animation, spawn/despawn animation
-├── [5th] Character reactions: ensure emotion tags fire correctly in demo flow
+├── [Agrani] Sub-agent chip: heartbeat animation, spawn/despawn animation
+├── [Prithvi Raj Bais] Character reactions: ensure emotion tags fire correctly in demo flow
 ├── [All] Demo video recording if live demo is unstable
 └── [Kush] GitHub: clean README, working setup instructions, commit history shows genuine work
 ```
@@ -189,7 +189,7 @@ Use Python 3.11, FastAPI 0.111, pydantic v2 models for all message types.
 
 ---
 
-### PROMPT B — Devansh: Playwright Browser Agent
+### PROMPT B — Somya: Playwright Browser Agent
 
 ```
 Build the browser automation module for an AI desktop agent.
@@ -244,7 +244,7 @@ Requirements:
 
 ---
 
-### PROMPT C — Agrani: Memory System + Research Agent
+### PROMPT C — Dimple: Memory System + Research Agent
 
 ```
 Build the memory system and research pipeline for ARIA.
@@ -330,7 +330,7 @@ ResearchAgent class:
 
 ---
 
-### PROMPT D — Prakhyat: Frontend State Machine + Canvases
+### PROMPT D — Agrani: Frontend State Machine + Canvases
 
 ```
 Build the React frontend for ARIA — a desktop AI agent application.
@@ -415,7 +415,7 @@ All components must NOT use any external component library (no shadcn, no MUI, n
 
 ---
 
-### PROMPT E — 5th Member: VRM Character + Background World
+### PROMPT E — Prithvi Raj Bais: VRM Character + Background World
 
 ```
 Build the 3D character controller and animated background for ARIA.

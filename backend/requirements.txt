@@ -2,10 +2,16 @@ fastapi
 uvicorn
 websockets
 google-genai
+google-generativeai
 python-dotenv
 numpy
 scipy
 cartesia
 playwright
+chromadb
+sentence-transformers
+tavily-python
+httpx
+beautifulsoup4
 boto3
 Pillow

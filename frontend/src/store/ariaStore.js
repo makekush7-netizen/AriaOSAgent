@@ -1,12 +1,50 @@
-import { create } from 'zustand'
+import React from 'react'
 
 // Default widget layout positions (as % of container for responsiveness)
 const DEFAULT_WIDGETS = [
-  { id: 'clock',        visible: true, position: { x: 0,   y: 0   }, size: { w: 46, h: 28 } },
-  { id: 'active_task',  visible: true, position: { x: 54,  y: 0   }, size: { w: 46, h: 28 } },
-  { id: 'memory',       visible: true, position: { x: 0,   y: 34  }, size: { w: 46, h: 54 } },
-  { id: 'quick_actions',visible: true, position: { x: 54,  y: 34  }, size: { w: 46, h: 54 } },
+  { id: 'clock', visible: true, position: { x: 0, y: 0 }, size: { w: 46, h: 28 } },
+  { id: 'active_task', visible: true, position: { x: 54, y: 0 }, size: { w: 46, h: 28 } },
+  { id: 'memory', visible: true, position: { x: 0, y: 34 }, size: { w: 46, h: 54 } },
+  { id: 'quick_actions', visible: true, position: { x: 54, y: 34 }, size: { w: 46, h: 54 } },
 ]
+
+const createStore = (createState) => {
+  let state
+  const listeners = new Set()
+
+  const setState = (partial) => {
+    const nextState = typeof partial === 'function' ? partial(state) : partial
+    if (Object.is(nextState, state)) return
+    state = { ...state, ...nextState }
+    listeners.forEach((listener) => listener())
+  }
+
+  const getState = () => state
+
+  const subscribe = (listener) => {
+    listeners.add(listener)
+    return () => listeners.delete(listener)
+  }
+
+  state = createState(setState, getState)
+
+  return { setState, getState, subscribe }
+}
+
+const create = (createState) => {
+  const store = createStore(createState)
+
+  const useStore = (selector = (s) => s) => {
+    return React.useSyncExternalStore(
+      store.subscribe,
+      () => selector(store.getState()),
+      () => selector(store.getState())
+    )
+  }
+
+  Object.assign(useStore, store)
+  return useStore
+}
 
 // appState: 'home' | 'conversation' | 'planning' | 'execution' | 'completion'
 export const useAriaStore = create((set) => ({
@@ -45,11 +83,11 @@ export const useAriaStore = create((set) => ({
   })),
 
   updateAgentHeartbeat: (agentId, status, step) => set((s) => ({
-    activeAgents: s.activeAgents.map(a => a.id === agentId ? { ...a, status, step } : a)
+    activeAgents: s.activeAgents.map((a) => a.id === agentId ? { ...a, status, step } : a)
   })),
 
   removeAgent: (agentId) => set((s) => ({
-    activeAgents: s.activeAgents.filter(a => a.id !== agentId)
+    activeAgents: s.activeAgents.filter((a) => a.id !== agentId)
   })),
 
   setActivePlan: (plan) => set({ activePlan: plan }),
@@ -62,7 +100,7 @@ export const useAriaStore = create((set) => ({
   setCompletionData: (data) => set({ completionData: data }),
 
   updateWidget: (id, patch) => set((s) => ({
-    widgetLayout: s.widgetLayout.map(w => w.id === id ? { ...w, ...patch } : w)
+    widgetLayout: s.widgetLayout.map((w) => w.id === id ? { ...w, ...patch } : w)
   })),
 
   resetWidgetLayout: () => set({ widgetLayout: DEFAULT_WIDGETS }),
