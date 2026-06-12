@@ -1,0 +1,50 @@
+/* ARIA Design Tokens — v1.0 */
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400&display=swap');
+
+:root {
+  /* Backgrounds */
+  --bg-world:    #0a0a0f;
+  --bg-base:     #0f0f16;
+  --bg-surface:  #16161f;
+  --bg-elevated: #1e1e2a;
+  --bg-overlay:  rgba(22, 22, 31, 0.85);
+
+  /* Gold system */
+  --gold-primary:    #e8c97a;
+  --gold-dim:        #c4a55a;
+  --gold-glow:       rgba(232, 201, 122, 0.15);
+  --gold-glow-soft:  rgba(232, 201, 122, 0.06);
+
+  /* Semantic */
+  --accent-teal:   #4fd1c7;
+  --accent-purple: #9b7ff4;
+  --accent-coral:  #f4956a;
+  --accent-green:  #6bcf7f;
+  --accent-red:    #f46a6a;
+
+  /* Text */
+  --text-primary:   #f0ede8;
+  --text-secondary: #a09a90;
+  --text-muted:     #5a5550;
+  --text-gold:      #e8c97a;
+
+  /* Glass borders */
+  --glass-border:        rgba(232, 201, 122, 0.12);
+  --glass-border-active: rgba(232, 201, 122, 0.30);
+
+  /* Typography */
+  --font-display: 'Space Grotesk', sans-serif;
+  --font-body:    'Inter', sans-serif;
+  --font-mono:    'JetBrains Mono', monospace;
+
+  /* Easing */
+  --ease-out-smooth: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring:     cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-gentle:     cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Durations */
+  --dur-fast:   150ms;
+  --dur-normal: 250ms;
+  --dur-slow:   400ms;
+  --dur-enter:  500ms;
+}

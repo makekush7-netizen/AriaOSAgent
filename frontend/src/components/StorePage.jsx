@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 
 const Icons = {
   User: () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>,
@@ -37,9 +37,13 @@ function Stars({ n }) {
   return <div className="store-card-stars">{'★'.repeat(n)}{'☆'.repeat(5 - n)}</div>
 }
 
-export default function StorePage() {
-  const [tab, setTab] = useState('skins')
+export default function StorePage({ defaultTab = 'skins' }) {
+  const [tab, setTab] = useState(defaultTab)
   const [installed, setInstalled] = useState(new Set(['gmail', 'form']))
+
+  useEffect(() => {
+    setTab(defaultTab)
+  }, [defaultTab])
 
   const handleInstall = (id) => setInstalled(p => new Set([...p, id]))
 

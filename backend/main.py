@@ -18,6 +18,14 @@ from cartesia import Cartesia
 
 load_dotenv(dotenv_path=Path(__file__).parent / ".env")
 
+# ── Unified LLM router (Bedrock → Gemini fallback) ──
+try:
+    from llm_router import llm_call, get_active_provider_info
+except Exception as _lr_err:
+    print(f"[ARIA] llm_router import failed: {_lr_err}")
+    llm_call = None
+    get_active_provider_info = None
+
 # ── New agentic modules ───────────────────────────────────────────────────────
 try:
     from agent_orchestrator import orchestrator
@@ -36,6 +44,12 @@ try:
 except Exception as _res_err:
     print(f"[ARIA] research import failed: {_res_err}")
     research_agent = None
+
+try:
+    from certificate_generator import generate_certificates_from_csv
+except Exception as _cert_err:
+    print(f"[ARIA] certificate_generator import failed: {_cert_err}")
+    generate_certificates_from_csv = None
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Cartesia TTS configuration
@@ -191,6 +205,29 @@ def delete_note(filename: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# ── Certificate Generation Endpoint ──────────────────────────────────────────
+class CertRequest(BaseModel):
+    csv_path: str
+    course_name: str = "ARIA Hackathon"
+    template_path: str = ""
+    output_dir: str = ""
+
+@app.post("/api/generate-certificates")
+async def generate_certificates_endpoint(req: CertRequest):
+    """Batch-generate certificates from a CSV. Returns a summary string."""
+    if not generate_certificates_from_csv:
+        raise HTTPException(status_code=500, detail="certificate_generator module not loaded.")
+    try:
+        result = await generate_certificates_from_csv(
+            csv_path=req.csv_path,
+            course_name=req.course_name,
+            template_path=req.template_path or None,
+            output_dir=req.output_dir or None,
+        )
+        return {"status": "ok", "message": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 SYSTEM_PROMPT = """You are ARIA, a 3D AI Avatar living on this website.
 
 CORE IDENTITY:
@@ -306,34 +343,46 @@ def invoke_gemini(user_message: str, memory: dict) -> dict:
     # Use the safe-for-LLM profile (no AWS creds / passwords)
     safe_memory = memory_mgr.get_profile_for_llm() if memory_mgr else memory
     system_prompt = SYSTEM_PROMPT + f"\nUSER CONTEXT (Memory): {json.dumps(safe_memory)}" + episodic_context + "\n\nTOOLS AVAILABLE:\n" + json.dumps(tools_context, indent=2)
-    client = _get_gemini_client()
-    if not client:
-        return {"type": "text", "content": "[EMOTION: SAD] Gemini is not configured. Please set GEMINI_API_KEY."}
 
     try:
-        model_name = os.getenv("GEMINI_MODEL", "gemini-1.5-flash").strip()
+        # Build message list for the unified router
         history = CHAT_HISTORY[-15:]
-        contents = []
+        messages = []
         for item in history:
-            parts = [genai.types.Part.from_text(text=p) for p in item["parts"]]
-            contents.append(genai.types.Content(role=item["role"], parts=parts))
-        contents.append(genai.types.Content(role="user", parts=[genai.types.Part.from_text(text=user_message)]))
-        
-        response = client.models.generate_content(
-            model=model_name,
-            contents=contents,
-            config=genai.types.GenerateContentConfig(
-                system_instruction=system_prompt,
+            role = "assistant" if item["role"] == "model" else item["role"]
+            messages.append({"role": role, "content": item["parts"][0]})
+        messages.append({"role": "user", "content": user_message})
+
+        # ── Route through unified LLM (Bedrock → Gemini fallback) ──
+        if llm_call:
+            text_content = llm_call(
+                system_prompt=system_prompt,
+                messages=messages,
+                task_type="reasoning",
             )
-        )
-        text_content = (response.text or "").strip()
+        else:
+            # Hard fallback: direct Gemini call if router failed to import
+            client = _get_gemini_client()
+            if not client:
+                return {"type": "text", "content": "[EMOTION: SAD] No LLM provider configured. Set GEMINI_API_KEY or AWS credentials in .env"}
+            model_name = os.getenv("GEMINI_MODEL", "gemini-1.5-flash").strip()
+            contents = []
+            for item in CHAT_HISTORY[-15:]:
+                parts = [genai.types.Part.from_text(text=p) for p in item["parts"]]
+                contents.append(genai.types.Content(role=item["role"], parts=parts))
+            contents.append(genai.types.Content(role="user", parts=[genai.types.Part.from_text(text=user_message)]))
+            response = client.models.generate_content(
+                model=model_name,
+                contents=contents,
+                config=genai.types.GenerateContentConfig(system_instruction=system_prompt)
+            )
+            text_content = (response.text or "").strip()
 
         tool_call = _parse_tool_call(text_content)
         if tool_call:
             tool_name = tool_call.get("name")
             tool_args = tool_call.get("args", {})
             tool_desc = f"[I decided to trigger the tool '{tool_name}' with arguments: {json.dumps(tool_args)}]"
-
             CHAT_HISTORY.append({"role": "user", "parts": [user_message]})
             CHAT_HISTORY.append({"role": "model", "parts": [tool_desc]})
             return {"type": "tool_call", "name": tool_name, "args": tool_args}
@@ -348,8 +397,16 @@ def invoke_gemini(user_message: str, memory: dict) -> dict:
 
         return {"type": "text", "content": text_content}
     except Exception as e:
-        print(f"Gemini Error: {e}")
-        return {"type": "text", "content": f"[EMOTION: SAD] I ran into an error processing your request: {e}"}
+        print(f"LLM Router Error: {e}")
+        return {"type": "text", "content": f"[EMOTION: SAD] I ran into an error: {e}"}
+
+# ── LLM Status Endpoint ──────────────────────────────────────────
+@app.get("/api/llm-status")
+async def get_llm_status():
+    """Returns which LLM provider is currently active."""
+    if get_active_provider_info:
+        return get_active_provider_info()
+    return {"configured_provider": "gemini", "bedrock_available": False, "gemini_available": bool(os.getenv("GEMINI_API_KEY"))}
 
 class ConnectionManager:
     def __init__(self):
@@ -386,7 +443,11 @@ async def websocket_endpoint(websocket: WebSocket):
     print("[WS] Client connected")
     try:
         while True:
-            msg_type = await websocket.receive()
+            try:
+                msg_type = await websocket.receive()
+            except Exception as _ws_recv_err:
+                print(f"[WS] Receive error (client likely disconnected): {_ws_recv_err}")
+                break
             if "text" in msg_type:
                 data = json.loads(msg_type["text"])
                 msg_type_str = data.get("type")
@@ -709,6 +770,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 # print(f"[WS] Received audio chunk: {len(audio_data)} bytes")
                 
     except WebSocketDisconnect:
+        pass
+    finally:
         manager.disconnect(websocket)
         print("[WS] Client disconnected")
         from agent_tools import active_sessions
