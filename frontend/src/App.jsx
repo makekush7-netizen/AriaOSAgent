@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import AvatarZone from './components/AvatarZone'
+import BackgroundCanvas from './components/BackgroundCanvas'
 import ChatPanel from './components/ChatPanel'
 import BottomBar from './components/BottomBar'
 import BubbleMode from './components/BubbleMode'
@@ -61,12 +62,12 @@ export default function App() {
   const [isBubbleMode, setIsBubbleMode] = useState(false)
   const [selectedModel, setSelectedModel] = useState('female')
   const [particles, setParticles] = useState([])
-  
+
   const selectedModelRef = useRef('female')
   const wsRef = useRef(null)
   const audioContextRef = useRef(null)
   const rafRef = useRef(null)
-  
+
   const greeting = getGreeting()
 
   // Fullscreen support
@@ -78,7 +79,7 @@ export default function App() {
           const win = getCurrentWindow()
           const isFull = await win.isFullscreen()
           await win.setFullscreen(!isFull)
-        } catch (_) {}
+        } catch (_) { }
       }
     }
     window.addEventListener('keydown', handleKeyDown)
@@ -150,21 +151,21 @@ export default function App() {
       if (res.ok) {
         const ab = await res.arrayBuffer()
         stopActiveAudio()
-        
+
         const ac = new (window.AudioContext || window.webkitAudioContext)()
         audioContextRef.current = ac
-        
+
         if (ac.state === 'suspended') {
           await ac.resume()
         }
-        
+
         const buf = await ac.decodeAudioData(ab)
         const src = ac.createBufferSource()
         src.buffer = buf
         const ana = ac.createAnalyser()
         ana.fftSize = 2048
         const d = new Uint8Array(ana.frequencyBinCount)
-        
+
         src.connect(ana)
         ana.connect(ac.destination)
         src.start()
@@ -178,13 +179,13 @@ export default function App() {
           rafRef.current = requestAnimationFrame(tick)
         }
         tick()
-        
+
         src.onended = () => {
           if (rafRef.current) cancelAnimationFrame(rafRef.current)
           window.dispatchEvent(new CustomEvent('aura:setMorph', { detail: { name: 'mouthOpen', value: 0 } }))
           try {
             ac.close()
-          } catch (_) {}
+          } catch (_) { }
           if (audioContextRef.current === ac) {
             audioContextRef.current = null
           }
@@ -193,7 +194,7 @@ export default function App() {
       } else {
         setAgentState('idle')
       }
-    } catch (e) { 
+    } catch (e) {
       console.error('TTS Error', e)
       setAgentState('idle')
     }
@@ -209,12 +210,12 @@ export default function App() {
         ws.onmessage = (e) => {
           try {
             const data = JSON.parse(e.data)
-            
+
             if (data.type === 'chat_response') {
               setIsThinking(false)
               setAgentState('speaking')
               stopActiveAudio()
-              
+
               let finalText = data.content
               const emotionMatch = finalText.match(/\[EMOTION:\s*(\w+)\]/i)
               if (emotionMatch) {
@@ -224,18 +225,18 @@ export default function App() {
               } else {
                 window.dispatchEvent(new CustomEvent('aura:setEmotion', { detail: 'happy' }))
               }
-              
+
               const actionMatch = finalText.match(/\[ACTION:\s*(\w+)\]/i)
               if (actionMatch) {
                 const action = actionMatch[1].toLowerCase()
                 window.dispatchEvent(new CustomEvent('aura:setAction', { detail: action }))
                 finalText = finalText.replace(actionMatch[0], '').trim()
               }
-              
+
               addMessage({ role: 'assistant', content: finalText })
-              
+
               const cleanTTS = finalText.replace(/([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])/g, '').replace(/\(.*?\)/g, '').replace(/\[.*?\]/g, '').trim()
-              
+
               let shortTTS = cleanTTS
               if (cleanTTS.length > 500) {
                 const truncated = cleanTTS.substring(0, 500)
@@ -246,10 +247,10 @@ export default function App() {
                 )
                 shortTTS = lastSentenceEnd > 100 ? truncated.substring(0, lastSentenceEnd + 1) : truncated
               }
-              
+
               if (cleanTTS) speakResponse(shortTTS)
             }
-            
+
             else if (data.type === 'permission_request') {
               try {
                 const ac = new (window.AudioContext || window.webkitAudioContext)()
@@ -260,10 +261,10 @@ export default function App() {
                 gain.gain.setValueAtTime(0.1, ac.currentTime)
                 gain.gain.exponentialRampToValueAtTime(0.01, ac.currentTime + 0.5)
                 osc.start(ac.currentTime); osc.stop(ac.currentTime + 0.5)
-              } catch (_) {}
+              } catch (_) { }
               setHitlRequest(data)
             }
-            
+
             else if (data.type === 'task_update') {
               if (data.task) {
                 setActiveTask(data.task)
@@ -273,7 +274,7 @@ export default function App() {
                 clearTaskLog()
               }
             }
-            
+
             else if (data.type === 'agent_thinking') {
               setIsThinking(true)
               setAgentState('thinking')
@@ -293,7 +294,7 @@ export default function App() {
                 status: data.status,
                 step: data.step
               })
-              
+
               // Map agent name to appropriate canvas layout view
               const nameLower = data.name.toLowerCase()
               if (nameLower.includes('browser') || nameLower.includes('form')) {
@@ -307,7 +308,7 @@ export default function App() {
               } else if (nameLower.includes('certificate')) {
                 setActiveCanvas('certificate')
               }
-              
+
               transitionTo('execution')
             }
 
@@ -320,7 +321,7 @@ export default function App() {
               setCompletionData(data.result)
               transitionTo('completion')
             }
-            
+
             else if (data.type === 'note_created') {
               window.dispatchEvent(new CustomEvent('aria:note_created', { detail: data.filename }))
             }
@@ -329,7 +330,7 @@ export default function App() {
           }
         }
         ws.onclose = () => setTimeout(connect, 3000)
-      } catch (_) {}
+      } catch (_) { }
     }
     connect()
     return () => wsRef.current?.close()
@@ -378,11 +379,11 @@ export default function App() {
   }
 
   const navItems = [
-    { id: 'home', label: 'Home', tooltip: 'Companion Board', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg> },
-    { id: 'notepad', label: 'Tasks', tooltip: 'Task Findings & logs', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><path d="m9 12 2 2 4-4"/></svg> },
-    { id: 'memory', label: 'Memory', tooltip: 'Database profile', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg> },
-    { id: 'store', label: 'Store', tooltip: 'Skills & Skins', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg> },
-    { id: 'settings', label: 'Settings', tooltip: 'Avatar & Widget Config', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg> },
+    { id: 'home', label: 'Home', tooltip: 'Companion Board', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></svg> },
+    { id: 'notepad', label: 'Tasks', tooltip: 'Task Findings & logs', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><path d="m9 12 2 2 4-4" /></svg> },
+    { id: 'memory', label: 'Memory', tooltip: 'Database profile', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect width="18" height="18" x="3" y="3" rx="2" ry="2" /><line x1="3" y1="9" x2="21" y2="9" /><line x1="9" y1="21" x2="9" y2="9" /></svg> },
+    { id: 'store', label: 'Store', tooltip: 'Skills & Skins', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" /></svg> },
+    { id: 'settings', label: 'Settings', tooltip: 'Avatar & Widget Config', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" /><circle cx="12" cy="12" r="3" /></svg> },
   ]
 
   // Compute character column width dynamically based on view and execution state
@@ -392,10 +393,8 @@ export default function App() {
 
   return (
     <div className="app-container">
-      {/* Animated Video Background */}
-      <div className="app-bg-image" aria-hidden="true">
-        <img src="/lofi-bg.png" alt="" />
-      </div>
+      {/* Animated Particle Background — Night Garden */}
+      <BackgroundCanvas />
 
       {/* Sidebar Navigation */}
       <aside className="sidebar">
@@ -441,7 +440,7 @@ export default function App() {
               onStopAgent={stopAgent}
               isWidget={currentView !== 'home' || appState === 'execution' || appState === 'planning'}
             />
-            
+
             <div className="char-ambient-glow" />
 
             {/* Success particles emitter container */}
@@ -495,103 +494,103 @@ export default function App() {
               <StorePage defaultTab="all" />
             )}
 
-          {currentView === 'settings' && (
-            <div className="page-container" style={{ color: 'var(--text-primary)' }}>
-              <div className="page-title">Settings</div>
-              
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '700px' }}>
-                <div className="glass-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                  <h3 style={{ color: 'var(--gold-primary)', fontSize: '15px' }}>Appearance</h3>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                      <div style={{ fontSize: '13px', fontWeight: '500' }}>Avatar Model Representation</div>
-                      <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Choose your digital 3D model skin & voice</div>
-                    </div>
-                    <div style={{ display: 'flex', background: 'rgba(0,0,0,0.3)', padding: '4px', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                      <button
-                        onClick={() => setSelectedModel('female')}
-                        style={{
-                          padding: '6px 12px',
-                          fontSize: '11px',
-                          border: 'none',
-                          borderRadius: '6px',
-                          cursor: 'pointer',
-                          background: selectedModel === 'female' ? 'var(--gold-primary)' : 'transparent',
-                          color: selectedModel === 'female' ? '#000' : 'var(--text-secondary)'
-                        }}
-                      >
-                        Female (I)
-                      </button>
-                      <button
-                        onClick={() => setSelectedModel('male')}
-                        style={{
-                          padding: '6px 12px',
-                          fontSize: '11px',
-                          border: 'none',
-                          borderRadius: '6px',
-                          cursor: 'pointer',
-                          background: selectedModel === 'male' ? 'var(--gold-primary)' : 'transparent',
-                          color: selectedModel === 'male' ? '#000' : 'var(--text-secondary)'
-                        }}
-                      >
-                        Male
-                      </button>
-                    </div>
-                  </div>
-                </div>
+            {currentView === 'settings' && (
+              <div className="page-container" style={{ color: 'var(--text-primary)' }}>
+                <div className="page-title">Settings</div>
 
-                <div className="glass-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                  <h3 style={{ color: 'var(--gold-primary)', fontSize: '15px' }}>Companion Board Widgets</h3>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    {widgetLayout.map(w => (
-                      <div key={w.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: '13px', textTransform: 'capitalize' }}>{w.id.replace('_', ' ')}</span>
-                        <input
-                          type="checkbox"
-                          checked={w.visible}
-                          onChange={(e) => updateWidget(w.id, { visible: e.target.checked })}
-                          style={{ accentColor: 'var(--gold-primary)', cursor: 'pointer' }}
-                        />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '700px' }}>
+                  <div className="glass-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    <h3 style={{ color: 'var(--gold-primary)', fontSize: '15px' }}>Appearance</h3>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <div style={{ fontSize: '13px', fontWeight: '500' }}>Avatar Model Representation</div>
+                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Choose your digital 3D model skin & voice</div>
                       </div>
-                    ))}
+                      <div style={{ display: 'flex', background: 'rgba(0,0,0,0.3)', padding: '4px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                        <button
+                          onClick={() => setSelectedModel('female')}
+                          style={{
+                            padding: '6px 12px',
+                            fontSize: '11px',
+                            border: 'none',
+                            borderRadius: '6px',
+                            cursor: 'pointer',
+                            background: selectedModel === 'female' ? 'var(--gold-primary)' : 'transparent',
+                            color: selectedModel === 'female' ? '#000' : 'var(--text-secondary)'
+                          }}
+                        >
+                          Female (I)
+                        </button>
+                        <button
+                          onClick={() => setSelectedModel('male')}
+                          style={{
+                            padding: '6px 12px',
+                            fontSize: '11px',
+                            border: 'none',
+                            borderRadius: '6px',
+                            cursor: 'pointer',
+                            background: selectedModel === 'male' ? 'var(--gold-primary)' : 'transparent',
+                            color: selectedModel === 'male' ? '#000' : 'var(--text-secondary)'
+                          }}
+                        >
+                          Male
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                  <button className="memory-view-all" style={{ marginTop: '10px' }} onClick={resetWidgetLayout}>
-                    Reset widget layouts
-                  </button>
+
+                  <div className="glass-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    <h3 style={{ color: 'var(--gold-primary)', fontSize: '15px' }}>Companion Board Widgets</h3>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      {widgetLayout.map(w => (
+                        <div key={w.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: '13px', textTransform: 'capitalize' }}>{w.id.replace('_', ' ')}</span>
+                          <input
+                            type="checkbox"
+                            checked={w.visible}
+                            onChange={(e) => updateWidget(w.id, { visible: e.target.checked })}
+                            style={{ accentColor: 'var(--gold-primary)', cursor: 'pointer' }}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                    <button className="memory-view-all" style={{ marginTop: '10px' }} onClick={resetWidgetLayout}>
+                      Reset widget layouts
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
-        </div>
-      </main>
+            )}
+          </div>
+        </main>
 
-      {/* Bottom Bar Controls */}
-      {!isBubbleMode && (
-        <BottomBar
-          onSendMessage={sendMessage}
-          onVoiceAudio={sendVoiceAudio}
-        />
-      )}
+        {/* Bottom Bar Controls */}
+        {!isBubbleMode && (
+          <BottomBar
+            onSendMessage={sendMessage}
+            onVoiceAudio={sendVoiceAudio}
+          />
+        )}
 
-      {/* Bubble Orb Mode Overlay */}
-      {isBubbleMode && (
-        <BubbleMode
-          messages={messages}
-          agentState={agentState}
-          setAgentState={setAgentState}
-          onClose={() => setIsBubbleMode(false)}
-          onSendMessage={sendMessage}
-          onVoiceAudio={sendVoiceAudio}
-        />
-      )}
+        {/* Bubble Orb Mode Overlay */}
+        {isBubbleMode && (
+          <BubbleMode
+            messages={messages}
+            agentState={agentState}
+            setAgentState={setAgentState}
+            onClose={() => setIsBubbleMode(false)}
+            onSendMessage={sendMessage}
+            onVoiceAudio={sendVoiceAudio}
+          />
+        )}
 
-      {/* Human-in-the-Loop Interruption Requests */}
-      {hitlRequest && (
-        <HITLModal 
-          request={hitlRequest} 
-          onRespond={handleHITL} 
-        />
-      )}
+        {/* Human-in-the-Loop Interruption Requests */}
+        {hitlRequest && (
+          <HITLModal
+            request={hitlRequest}
+            onRespond={handleHITL}
+          />
+        )}
       </div>
     </div>
   )
