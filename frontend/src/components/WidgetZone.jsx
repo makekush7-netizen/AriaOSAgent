@@ -1,5 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useAriaStore } from '../store/ariaStore'
+import CalendarWidget from './widgets/CalendarWidget'
+import GoalsWidget from './widgets/GoalsWidget'
+import TodoWidget from './widgets/TodoWidget'
+import QuickLinksWidget from './widgets/QuickLinksWidget'
 
 // Helper to format date/time in HH:MM AM/PM format (e.g. 08:42 PM)
 const fmtTime = (date) => {
@@ -149,6 +153,14 @@ export default function WidgetZone({ onNavigate }) {
 
   const renderWidgetContent = (id) => {
     switch (id) {
+      case 'calendar':
+        return <CalendarWidget />
+      case 'goals':
+        return <GoalsWidget />
+      case 'todo':
+        return <TodoWidget />
+      case 'quick_links':
+        return <QuickLinksWidget />
       case 'clock':
         return (
           <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100%' }}>
@@ -172,8 +184,8 @@ export default function WidgetZone({ onNavigate }) {
               <div className="task-idle" style={{ fontSize: '12px', opacity: 0.7 }}>No active tasks running</div>
             )}
             <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
-              <button 
-                className="new-task-btn" 
+              <button
+                className="new-task-btn"
                 style={{
                   background: 'rgba(232, 201, 122, 0.08)',
                   border: '1px dashed var(--gold-primary)',
@@ -185,7 +197,7 @@ export default function WidgetZone({ onNavigate }) {
                   display: 'flex',
                   alignItems: 'center',
                   gap: '4px'
-                }} 
+                }}
                 onClick={() => transitionTo('conversation')}
               >
                 <span>+</span> New Task
@@ -199,8 +211,8 @@ export default function WidgetZone({ onNavigate }) {
             <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: '1.5', margin: '4px 0' }}>
               You have {memCount > 0 ? memCount : '128'} memories across {memCount > 0 ? Math.ceil(memCount / 4) : '14'} categories.
             </div>
-            <button 
-              className="memory-link-btn" 
+            <button
+              className="memory-link-btn"
               style={{
                 background: 'transparent',
                 border: 'none',
@@ -213,7 +225,7 @@ export default function WidgetZone({ onNavigate }) {
                 alignItems: 'center',
                 gap: '4px',
                 fontWeight: '500'
-              }} 
+              }}
               onClick={() => onNavigate('memory')}
             >
               Open Memory →
@@ -238,9 +250,13 @@ export default function WidgetZone({ onNavigate }) {
 
   const widgetTitles = {
     clock: '🕐 Time',
+    calendar: '📅 Calendar',
     active_task: '⚡ Active Task',
+    goals: '🎯 Goals',
     memory: '🧠 Memory',
-    quick_actions: '✦ Quick Actions'
+    todo: '✅ To Do',
+    quick_actions: '✦ Quick Actions',
+    quick_links: '🔗 Quick Links',
   }
 
   const visibleWidgets = widgetLayout.filter(w => w.visible)

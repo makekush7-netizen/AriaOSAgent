@@ -63,18 +63,24 @@ function ResponsiveAvatarController({ modelId, isWidget }) {
   const posY = modelId === 'male' ? malePosY : femalePosY
 
   const idealAspect = 0.8
-  let dynamicZ = baseZ
-  let dynamicTargetX = baseTargetX
+  const targetRef = useRef({ z: baseZ, tx: baseTargetX })
 
   if (aspect < idealAspect) {
     const ratio = idealAspect / aspect
-    dynamicZ = Math.min(4.4, baseZ * ratio)
-    dynamicTargetX = baseTargetX * (aspect / idealAspect)
+    targetRef.current.z = Math.min(4.4, baseZ * ratio)
+    targetRef.current.tx = baseTargetX * (aspect / idealAspect)
+  } else {
+    targetRef.current.z = baseZ
+    targetRef.current.tx = baseTargetX
   }
 
   useFrame(() => {
-    camera.position.set(0, baseCameraY, dynamicZ)
-    camera.lookAt(dynamicTargetX, baseTargetY, 0)
+    // Smooth lerp to target camera position (prevents squeeze on resize)
+    const lerp = 0.08
+    camera.position.z += (targetRef.current.z - camera.position.z) * lerp
+    camera.position.x += (targetRef.current.tx - camera.position.x) * lerp
+    camera.position.y = baseCameraY
+    camera.lookAt(targetRef.current.tx, baseTargetY, 0)
     camera.updateProjectionMatrix()
   })
 

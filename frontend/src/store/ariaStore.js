@@ -2,10 +2,14 @@ import React from 'react'
 
 // Default widget layout positions (as % of container for responsiveness)
 const DEFAULT_WIDGETS = [
-  { id: 'clock', visible: true, position: { x: 0, y: 0 }, size: { w: 46, h: 28 } },
-  { id: 'active_task', visible: true, position: { x: 54, y: 0 }, size: { w: 46, h: 28 } },
-  { id: 'memory', visible: true, position: { x: 0, y: 34 }, size: { w: 46, h: 54 } },
-  { id: 'quick_actions', visible: true, position: { x: 54, y: 34 }, size: { w: 46, h: 54 } },
+  { id: 'clock', visible: true, position: { x: 0, y: 0 }, size: { w: 32, h: 30 } },
+  { id: 'calendar', visible: true, position: { x: 0, y: 34 }, size: { w: 32, h: 60 } },
+  { id: 'active_task', visible: true, position: { x: 34, y: 0 }, size: { w: 32, h: 30 } },
+  { id: 'goals', visible: true, position: { x: 68, y: 0 }, size: { w: 32, h: 30 } },
+  { id: 'memory', visible: true, position: { x: 34, y: 34 }, size: { w: 32, h: 60 } },
+  { id: 'todo', visible: true, position: { x: 68, y: 34 }, size: { w: 32, h: 36 } },
+  { id: 'quick_actions', visible: false, position: { x: 54, y: 34 }, size: { w: 46, h: 54 } },
+  { id: 'quick_links', visible: true, position: { x: 68, y: 74 }, size: { w: 32, h: 20 } },
 ]
 
 const createStore = (createState) => {
