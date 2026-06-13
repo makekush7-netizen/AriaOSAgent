@@ -41,7 +41,7 @@ function loadMixamoAnimation(url, vrm) {
             const mixamoRigName = trackSplitted[0];
             const vrmBoneName = mixamoVRMRigMap[mixamoRigName];
             if (!vrmBoneName) return; // skip if not in map
-            
+
             const vrmNode = vrm.humanoid?.getNormalizedBoneNode(vrmBoneName);
             const vrmNodeName = vrmNode?.name;
             const mixamoRigNode = asset.getObjectByName(mixamoRigName);
@@ -88,34 +88,42 @@ export default function AvatarModel({
     position = [0, 0, 0],
     mini = false,
     showWaistUp = false,
-    modelId = 'female'
+    modelId = 'female',
+    quality = 'high'
 }) {
     const [vrm, setVrm] = useState(null)
     const mixerRef = useRef(null)
     const actionsRef = useRef({})
     const currentActionRef = useRef(null)
     const emotionRef = useRef('neutral')
-    
+
     // Adjust position to show from waist up
     const adjustedPosition = showWaistUp
         ? [position[0], position[1], position[2]]
         : position
-        
+
     useEffect(() => {
         setVrm(null) // clear previous model
-        
+
         const loader = new GLTFLoader()
         loader.register((parser) => new VRMLoaderPlugin(parser))
-        
-        const modelUrl = modelId === 'male' ? '/malecharacter.vrm' : '/AvatarSample_I.vrm'
-        
+
+        // Load different VRM files based on quality setting
+        // Users should provide: male_low.vrm, male_med.vrm, malecharacter.vrm (high)
+        //                       female_low.vrm, female_med.vrm, AvatarSample_I.vrm (high)
+        const modelPaths = {
+            male: { low: '/male_low.vrm', medium: '/male_med.vrm', high: '/malecharacter.vrm' },
+            female: { low: '/female_low.vrm', medium: '/female_med.vrm', high: '/AvatarSample_I.vrm' },
+        }
+        const modelUrl = (modelPaths[modelId] || modelPaths.female)[quality] || modelPaths[modelId].high
+
         loader.load(modelUrl, (gltf) => {
             const vrmInstance = gltf.userData.vrm
             vrmInstance.scene.traverse((obj) => { if (obj.isMesh) obj.frustumCulled = false })
-            
+
             const mixer = new THREE.AnimationMixer(vrmInstance.scene)
             mixerRef.current = mixer
-            
+
             Promise.all([
                 loadMixamoAnimation(modelId === 'male' ? '/Standard Idle.fbx' : '/Idle (3).fbx', vrmInstance),
                 loadMixamoAnimation('/Talking (1).fbx', vrmInstance),
@@ -128,7 +136,7 @@ export default function AvatarModel({
                 actionsRef.current['dance'] = mixer.clipAction(danceClip)
                 actionsRef.current['jumping_jacks'] = mixer.clipAction(jumpingJacksClip)
                 actionsRef.current['victory'] = mixer.clipAction(victoryClip)
-                
+
                 const idleAction = actionsRef.current['idle']
                 if (idleAction) {
                     idleAction.play()
@@ -143,18 +151,18 @@ export default function AvatarModel({
         }, undefined, (err) => {
             console.error('[VRM] Load error:', err)
         })
-        
+
         return () => {
             if (vrm) {
                 // dispose vrm?
             }
         }
-    }, [modelId]) // Reload when modelId changes
+    }, [modelId, quality]) // Reload when modelId or quality changes
 
     const playAnimation = (name) => {
         const next = actionsRef.current[name]
         const current = currentActionRef.current
-        
+
         if (next && current && next !== current) {
             next.reset().play()
             next.crossFadeFrom(current, 0.3, true)
@@ -207,7 +215,7 @@ export default function AvatarModel({
             if (emo === 'angry') vrmEmo = 'angry'
 
             emotionRef.current = vrmEmo
-            
+
             const allExprs = ['happy', 'sad', 'angry', 'surprised', 'neutral']
             allExprs.forEach(expr => {
                 vrm.expressionManager.setValue(expr, 0)
@@ -232,7 +240,7 @@ export default function AvatarModel({
             if (!vrm) return
             const { name, value } = e?.detail || {}
             if (typeof value !== 'number') return
-            
+
             if (name === 'mouthOpen') {
                 vrm.expressionManager.setValue('aa', value)
             }
@@ -250,7 +258,7 @@ export default function AvatarModel({
             vrm.update(delta)
         }
         if (mixerRef.current) mixerRef.current.update(delta)
-        
+
         blinkTimerRef.current += delta
         idleTimeRef.current += delta
 

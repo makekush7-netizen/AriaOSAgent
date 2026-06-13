@@ -95,7 +95,7 @@ function ResponsiveAvatarController({ modelId, isWidget, characterScale = 1 }) {
       <directionalLight position={[0, -1, 2]} intensity={0.35} color="#e8c97a" />
       <ErrorBoundary>
         <Suspense fallback={null}>
-          <AvatarModel modelId={modelId} scale={scale} position={[0, posY, 0]} />
+          <AvatarModel modelId={modelId} scale={scale} position={[0, posY, 0]} quality={character?.quality || 'high'} />
         </Suspense>
       </ErrorBoundary>
       {!isWidget && <PlatformGlow />}
@@ -124,7 +124,7 @@ export default function AvatarZone({
   const showGreeting = character?.showGreeting !== false
 
   return (
-    <div className="avatar-zone" style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'visible' }}>
+    <div className="avatar-zone" style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'visible', minHeight: 0 }}>
       {!isWidget && showGreeting && (
         <div className="avatar-greeting">
           <h2>
