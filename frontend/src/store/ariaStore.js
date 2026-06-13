@@ -46,6 +46,7 @@ const DEFAULT_CHARACTER = {
   posY: 0,
   greeting: '',
   showGreeting: true,
+  quality: 'high', // 'low' | 'medium' | 'high'
 }
 
 const createStore = (createState) => {

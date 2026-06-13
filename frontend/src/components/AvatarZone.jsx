@@ -46,14 +46,16 @@ function PlatformGlow() {
   )
 }
 
-function ResponsiveAvatarController({ modelId, isWidget }) {
+function ResponsiveAvatarController({ modelId, isWidget, characterScale = 1 }) {
   const { camera, size } = useThree()
   const aspect = size.width / size.height
 
-  const baseZ = isWidget ? 2.05 : 2.55
+  // Adjust camera to show more of the body — scale factor pulls camera back
+  const scaleBoost = Math.max(1, characterScale)
+  const baseZ = isWidget ? 2.05 : 2.55 * scaleBoost
   const baseTargetX = 0
-  const baseTargetY = 1.62
-  const baseCameraY = isWidget ? 1.62 : 1.58
+  const baseTargetY = isWidget ? 1.62 : 1.35
+  const baseCameraY = isWidget ? 1.62 : 1.45
 
   const femaleScale = 2.12
   const maleScale = 1.72
@@ -148,7 +150,7 @@ export default function AvatarZone({
           camera={{ position: [0, 1.68, 2.25], fov: 32 }}
           style={{ background: 'transparent' }}
         >
-          <ResponsiveAvatarController modelId={modelId} isWidget={isWidget} />
+          <ResponsiveAvatarController modelId={modelId} isWidget={isWidget} characterScale={scale} />
         </Canvas>
 
         {!isWidget && (

@@ -256,6 +256,29 @@ export default function SettingsPanel() {
                             </div>
                         </div>
 
+                        {/* Graphics Quality */}
+                        <div className="glass-card" style={{ padding: '18px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            <h3 style={{ color: 'var(--gold-primary)', fontSize: '14px', fontWeight: 600 }}>Graphics Quality</h3>
+                            <p style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Adjust polygon count based on your system specs. Lower = better performance.</p>
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                                {[
+                                    { id: 'low', label: 'Low', desc: '~20k polys', color: 'var(--accent-coral)' },
+                                    { id: 'medium', label: 'Medium', desc: '~35k polys', color: 'var(--gold-primary)' },
+                                    { id: 'high', label: 'High', desc: '~50k polys', color: 'var(--accent-green)' },
+                                ].map(q => (
+                                    <button key={q.id} onClick={() => setCharacter({ quality: q.id })} style={{
+                                        flex: 1, padding: '10px', borderRadius: '8px',
+                                        border: `2px solid ${character.quality === q.id ? q.color : 'rgba(255,255,255,0.08)'}`,
+                                        background: character.quality === q.id ? `${q.color}15` : 'rgba(255,255,255,0.02)',
+                                        cursor: 'pointer', textAlign: 'center', transition: 'all 200ms',
+                                    }}>
+                                        <div style={{ fontSize: '12px', fontWeight: 600, color: character.quality === q.id ? q.color : 'var(--text-secondary)' }}>{q.label}</div>
+                                        <div style={{ fontSize: '9px', color: 'var(--text-muted)', marginTop: '2px' }}>{q.desc}</div>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
                         {/* Greeting */}
                         <div className="glass-card" style={{ padding: '18px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                             <h3 style={{ color: 'var(--gold-primary)', fontSize: '14px', fontWeight: 600 }}>Greeting</h3>
