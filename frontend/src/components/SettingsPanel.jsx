@@ -62,6 +62,8 @@ function ColorInput({ label, value, onChange }) {
 
 export default function SettingsPanel() {
     const { theme, setTheme, resetTheme, character, setCharacter, resetCharacter, widgetLayout, updateWidget, resetWidgetLayout } = useAriaStore()
+    const [selectedModel, setSelectedModel] = useState(() => localStorage.getItem('aria_model') || 'female')
+    const handleModelChange = (m) => { setSelectedModel(m); localStorage.setItem('aria_model', m); window.dispatchEvent(new CustomEvent('aria:modelChanged', { detail: m })) }
     const [tab, setTab] = useState('dashboard')
     const fileInputRef = useRef(null)
 
@@ -185,6 +187,26 @@ export default function SettingsPanel() {
                 {/* ─── CHARACTER TAB ─── */}
                 {tab === 'character' && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '600px' }}>
+                        {/* Model selector */}
+                        <div className="glass-card" style={{ padding: '18px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                            <h3 style={{ color: 'var(--gold-primary)', fontSize: '14px', fontWeight: 600 }}>Avatar Model</h3>
+                            <p style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Choose your digital companion's appearance and voice.</p>
+                            <div style={{ display: 'flex', gap: '10px' }}>
+                                {['female', 'male'].map(m => (
+                                    <button key={m} onClick={() => handleModelChange(m)} style={{
+                                        flex: 1, padding: '14px', borderRadius: '10px', border: `2px solid ${selectedModel === m ? 'var(--gold-primary)' : 'rgba(255,255,255,0.08)'}`,
+                                        background: selectedModel === m ? 'rgba(232,201,122,0.08)' : 'rgba(255,255,255,0.02)',
+                                        cursor: 'pointer', textAlign: 'center', transition: 'all 200ms',
+                                    }}>
+                                        <div style={{ fontSize: '24px', marginBottom: '4px' }}>{m === 'female' ? '👩' : '👨'}</div>
+                                        <div style={{ fontSize: '12px', fontWeight: 600, color: selectedModel === m ? 'var(--gold-primary)' : 'var(--text-secondary)' }}>
+                                            {m === 'female' ? 'Female (I)' : 'Male'}
+                                        </div>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
                         <div className="glass-card" style={{ padding: '18px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                 <h3 style={{ color: 'var(--gold-primary)', fontSize: '14px', fontWeight: 600 }}>Appearance</h3>

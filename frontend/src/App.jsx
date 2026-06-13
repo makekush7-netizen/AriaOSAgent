@@ -109,10 +109,16 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [])
 
-  // Sync ref
+  // Sync ref + listen for model change from Settings
   useEffect(() => {
     selectedModelRef.current = selectedModel
   }, [selectedModel])
+
+  useEffect(() => {
+    const handler = (e) => { if (e.detail) { setSelectedModel(e.detail); selectedModelRef.current = e.detail } }
+    window.addEventListener('aria:modelChanged', handler)
+    return () => window.removeEventListener('aria:modelChanged', handler)
+  }, [])
 
   // Load profile memory on start
   useEffect(() => {

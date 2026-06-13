@@ -122,7 +122,7 @@ export default function AvatarZone({
   const showGreeting = character?.showGreeting !== false
 
   return (
-    <div className="avatar-zone" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+    <div className="avatar-zone" style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'visible' }}>
       {!isWidget && showGreeting && (
         <div className="avatar-greeting">
           <h2>
@@ -134,7 +134,7 @@ export default function AvatarZone({
       )}
 
       <div className="avatar-canvas-wrap" style={{
-        position: 'relative', flex: 1,
+        position: 'relative', flex: 1, overflow: 'visible',
         transform: `translate(${posX}px, ${posY}px) scale(${scale})`,
         transformOrigin: 'center bottom',
       }}>
