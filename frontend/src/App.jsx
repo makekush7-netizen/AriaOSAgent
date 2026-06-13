@@ -13,6 +13,7 @@ import WidgetZone from './components/WidgetZone'
 import PlanningCard from './components/PlanningCard'
 import TaskCanvas from './components/TaskCanvas'
 import CompletionCard from './components/CompletionCard'
+import SettingsPanel from './components/SettingsPanel'
 import { useAriaStore } from './store/ariaStore'
 
 const API_BASE = 'http://localhost:8000'
@@ -68,7 +69,29 @@ export default function App() {
   const audioContextRef = useRef(null)
   const rafRef = useRef(null)
 
-  const greeting = getGreeting()
+  const { theme, character } = useAriaStore()
+
+  const greeting = character.greeting || getGreeting()
+
+  // Apply theme CSS variables dynamically
+  useEffect(() => {
+    if (!theme) return
+    const r = document.documentElement.style
+    r.setProperty('--gold-primary', theme.goldPrimary)
+    r.setProperty('--gold-dim', theme.goldDim)
+    r.setProperty('--accent-teal', theme.accentTeal)
+    r.setProperty('--accent-purple', theme.accentPurple)
+    r.setProperty('--accent-coral', theme.accentCoral)
+    r.setProperty('--accent-green', theme.accentGreen)
+    r.setProperty('--bg-world', theme.bgWorld)
+    r.setProperty('--bg-base', theme.bgBase)
+    r.setProperty('--bg-surface', theme.bgSurface)
+    r.setProperty('--text-primary', theme.textPrimary)
+    r.setProperty('--text-secondary', theme.textSecondary)
+    r.setProperty('--text-gold', theme.goldPrimary)
+    r.setProperty('--glass-border', theme.goldPrimary + '1f')
+    r.setProperty('--glass-border-active', theme.goldPrimary + '4d')
+  }, [theme])
 
   // Fullscreen support
   useEffect(() => {
@@ -508,71 +531,7 @@ export default function App() {
             )}
 
             {currentView === 'settings' && (
-              <div className="page-container" style={{ color: 'var(--text-primary)' }}>
-                <div className="page-title">Settings</div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '700px' }}>
-                  <div className="glass-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                    <h3 style={{ color: 'var(--gold-primary)', fontSize: '15px' }}>Appearance</h3>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div>
-                        <div style={{ fontSize: '13px', fontWeight: '500' }}>Avatar Model Representation</div>
-                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Choose your digital 3D model skin & voice</div>
-                      </div>
-                      <div style={{ display: 'flex', background: 'rgba(0,0,0,0.3)', padding: '4px', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                        <button
-                          onClick={() => setSelectedModel('female')}
-                          style={{
-                            padding: '6px 12px',
-                            fontSize: '11px',
-                            border: 'none',
-                            borderRadius: '6px',
-                            cursor: 'pointer',
-                            background: selectedModel === 'female' ? 'var(--gold-primary)' : 'transparent',
-                            color: selectedModel === 'female' ? '#000' : 'var(--text-secondary)'
-                          }}
-                        >
-                          Female (I)
-                        </button>
-                        <button
-                          onClick={() => setSelectedModel('male')}
-                          style={{
-                            padding: '6px 12px',
-                            fontSize: '11px',
-                            border: 'none',
-                            borderRadius: '6px',
-                            cursor: 'pointer',
-                            background: selectedModel === 'male' ? 'var(--gold-primary)' : 'transparent',
-                            color: selectedModel === 'male' ? '#000' : 'var(--text-secondary)'
-                          }}
-                        >
-                          Male
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="glass-card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                    <h3 style={{ color: 'var(--gold-primary)', fontSize: '15px' }}>Companion Board Widgets</h3>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                      {widgetLayout.map(w => (
-                        <div key={w.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span style={{ fontSize: '13px', textTransform: 'capitalize' }}>{w.id.replace('_', ' ')}</span>
-                          <input
-                            type="checkbox"
-                            checked={w.visible}
-                            onChange={(e) => updateWidget(w.id, { visible: e.target.checked })}
-                            style={{ accentColor: 'var(--gold-primary)', cursor: 'pointer' }}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                    <button className="memory-view-all" style={{ marginTop: '10px' }} onClick={resetWidgetLayout}>
-                      Reset widget layouts
-                    </button>
-                  </div>
-                </div>
-              </div>
+              <SettingsPanel />
             )}
           </div>
         </main>

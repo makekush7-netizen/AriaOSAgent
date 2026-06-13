@@ -1,6 +1,18 @@
 import React from 'react'
 
-// Default widget layout positions (as % of container for responsiveness)
+const STORAGE_PREFIX = 'aria_'
+
+function loadFromStorage(key, fallback) {
+  try {
+    const raw = localStorage.getItem(STORAGE_PREFIX + key)
+    return raw ? JSON.parse(raw) : fallback
+  } catch { return fallback }
+}
+
+function saveToStorage(key, value) {
+  try { localStorage.setItem(STORAGE_PREFIX + key, JSON.stringify(value)) } catch { }
+}
+
 const DEFAULT_WIDGETS = [
   { id: 'clock', visible: true, position: { x: 0, y: 0 }, size: { w: 32, h: 30 } },
   { id: 'calendar', visible: true, position: { x: 0, y: 34 }, size: { w: 32, h: 60 } },
@@ -11,6 +23,30 @@ const DEFAULT_WIDGETS = [
   { id: 'quick_actions', visible: false, position: { x: 54, y: 34 }, size: { w: 46, h: 54 } },
   { id: 'quick_links', visible: true, position: { x: 68, y: 74 }, size: { w: 32, h: 20 } },
 ]
+
+const DEFAULT_THEME = {
+  id: 'night_garden',
+  name: 'Night Garden',
+  goldPrimary: '#e8c97a',
+  goldDim: '#c4a55a',
+  accentTeal: '#4fd1c7',
+  accentPurple: '#9b7ff4',
+  accentCoral: '#f4956a',
+  accentGreen: '#6bcf7f',
+  bgWorld: '#0a0a0f',
+  bgBase: '#0f0f16',
+  bgSurface: '#16161f',
+  textPrimary: '#f0ede8',
+  textSecondary: '#a09a90',
+}
+
+const DEFAULT_CHARACTER = {
+  scale: 1.0,
+  posX: 0,
+  posY: 0,
+  greeting: '',
+  showGreeting: true,
+}
 
 const createStore = (createState) => {
   let state
@@ -51,7 +87,7 @@ const create = (createState) => {
 }
 
 // appState: 'home' | 'conversation' | 'planning' | 'execution' | 'completion'
-export const useAriaStore = create((set) => ({
+export const useAriaStore = create((set, get) => ({
   appState: 'home',
   messages: [{ id: 1, role: 'aria', content: "Hello! I'm ARIA, your AI assistant. What would you like to do today?", ts: Date.now() }],
   isThinking: false,
@@ -60,10 +96,12 @@ export const useAriaStore = create((set) => ({
   taskLog: [],
   activeAgents: [],
   activePlan: null,
-  activeCanvas: 'form', // 'form' | 'research' | 'email' | 'certificate' | 'script'
+  activeCanvas: 'form',
   hitlRequest: null,
   memoryData: {},
-  widgetLayout: DEFAULT_WIDGETS,
+  widgetLayout: loadFromStorage('widget_layout', DEFAULT_WIDGETS),
+  theme: loadFromStorage('theme', DEFAULT_THEME),
+  character: loadFromStorage('character', DEFAULT_CHARACTER),
   completionData: null,
 
   transitionTo: (state) => set({ appState: state }),
@@ -103,11 +141,42 @@ export const useAriaStore = create((set) => ({
 
   setCompletionData: (data) => set({ completionData: data }),
 
-  updateWidget: (id, patch) => set((s) => ({
-    widgetLayout: s.widgetLayout.map((w) => w.id === id ? { ...w, ...patch } : w)
-  })),
+  updateWidget: (id, patch) => set((s) => {
+    const next = s.widgetLayout.map((w) => w.id === id ? { ...w, ...patch } : w)
+    saveToStorage('widget_layout', next)
+    return { widgetLayout: next }
+  }),
 
-  resetWidgetLayout: () => set({ widgetLayout: DEFAULT_WIDGETS }),
+  setWidgetLayout: (layout) => set(() => {
+    saveToStorage('widget_layout', layout)
+    return { widgetLayout: layout }
+  }),
+
+  resetWidgetLayout: () => set(() => {
+    saveToStorage('widget_layout', DEFAULT_WIDGETS)
+    return { widgetLayout: DEFAULT_WIDGETS }
+  }),
+
+  setTheme: (theme) => set(() => {
+    saveToStorage('theme', theme)
+    return { theme }
+  }),
+
+  resetTheme: () => set(() => {
+    saveToStorage('theme', DEFAULT_THEME)
+    return { theme: DEFAULT_THEME }
+  }),
+
+  setCharacter: (patch) => set((s) => {
+    const next = { ...s.character, ...patch }
+    saveToStorage('character', next)
+    return { character: next }
+  }),
+
+  resetCharacter: () => set(() => {
+    saveToStorage('character', DEFAULT_CHARACTER)
+    return { character: DEFAULT_CHARACTER }
+  }),
 
   setActiveCanvas: (type) => set({ activeCanvas: type }),
 }))
