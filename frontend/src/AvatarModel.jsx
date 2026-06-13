@@ -111,13 +111,26 @@ export default function AvatarModel({
         // Load different VRM files based on quality setting
         // Users should provide: male_low.vrm, male_med.vrm, malecharacter.vrm (high)
         //                       female_low.vrm, female_med.vrm, AvatarSample_I.vrm (high)
+        // Falls back to high if variant doesn't exist
         const modelPaths = {
             male: { low: '/male_low.vrm', medium: '/male_med.vrm', high: '/malecharacter.vrm' },
             female: { low: '/female_low.vrm', medium: '/female_med.vrm', high: '/AvatarSample_I.vrm' },
         }
-        const modelUrl = (modelPaths[modelId] || modelPaths.female)[quality] || modelPaths[modelId].high
+        const highFallback = modelPaths[modelId]?.high || modelPaths.female.high
+        const modelUrl = (modelPaths[modelId] || modelPaths.female)[quality] || highFallback
 
-        loader.load(modelUrl, (gltf) => {
+        const tryLoad = (url, onFallback) => {
+            loader.load(url, (gltf) => onFallback(gltf), undefined, (err) => {
+                console.warn(`[VRM] ${url} not found, falling back to ${highFallback}`)
+                if (url !== highFallback) {
+                    loader.load(highFallback, onFallback, undefined, (err2) => {
+                        console.error('[VRM] Fallback also failed:', err2)
+                    })
+                }
+            })
+        }
+
+        tryLoad(modelUrl, (gltf) => {
             const vrmInstance = gltf.userData.vrm
             vrmInstance.scene.traverse((obj) => { if (obj.isMesh) obj.frustumCulled = false })
 
@@ -148,9 +161,7 @@ export default function AvatarModel({
                 // Still set VRM so it renders even if animations fail
                 setVrm(vrmInstance)
             })
-        }, undefined, (err) => {
-            console.error('[VRM] Load error:', err)
-        })
+        }) // end tryLoad callback
 
         return () => {
             if (vrm) {
