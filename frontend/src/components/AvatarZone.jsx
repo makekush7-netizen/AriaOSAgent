@@ -46,7 +46,7 @@ function PlatformGlow() {
   )
 }
 
-function ResponsiveAvatarController({ modelId, isWidget, characterScale = 1 }) {
+function ResponsiveAvatarController({ modelId, isWidget, characterScale = 1, characterQuality = 'high' }) {
   const { camera, size } = useThree()
   const aspect = size.width / size.height
 
@@ -95,7 +95,7 @@ function ResponsiveAvatarController({ modelId, isWidget, characterScale = 1 }) {
       <directionalLight position={[0, -1, 2]} intensity={0.35} color="#e8c97a" />
       <ErrorBoundary>
         <Suspense fallback={null}>
-          <AvatarModel modelId={modelId} scale={scale} position={[0, posY, 0]} quality={character?.quality || 'high'} />
+          <AvatarModel modelId={modelId} scale={scale} position={[0, posY, 0]} quality={characterQuality} />
         </Suspense>
       </ErrorBoundary>
       {!isWidget && <PlatformGlow />}
@@ -150,7 +150,7 @@ export default function AvatarZone({
           camera={{ position: [0, 1.68, 2.25], fov: 32 }}
           style={{ background: 'transparent' }}
         >
-          <ResponsiveAvatarController modelId={modelId} isWidget={isWidget} characterScale={scale} />
+          <ResponsiveAvatarController modelId={modelId} isWidget={isWidget} characterScale={scale} characterQuality={character?.quality || 'high'} />
         </Canvas>
 
         {!isWidget && (
