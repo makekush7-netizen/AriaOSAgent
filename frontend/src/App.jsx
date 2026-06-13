@@ -418,11 +418,24 @@ export default function App() {
       </aside>
 
       <div className="app-shell">
-        {/* Top Bar Logo / Header */}
+        {/* Top Bar — ARIA branding + nav */}
         <header className="top-bar">
           <div className="top-bar-logo">
-            <span className="logo-text" style={{ fontSize: '13px', opacity: 0.6 }}>SYSTEM WORKSPACE</span>
+            <div className="logo-dot" />
+            <span className="logo-text">ARIA</span>
           </div>
+          <nav className="top-bar-nav">
+            {navItems.map(item => (
+              <button
+                key={item.id}
+                className={`nav-btn ${currentView === item.id ? 'active' : ''}`}
+                onClick={() => setCurrentView(item.id)}
+                data-tooltip={item.tooltip}
+              >
+                {item.icon}
+              </button>
+            ))}
+          </nav>
         </header>
 
         {/* Main Content Area */}

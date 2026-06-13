@@ -34,63 +34,57 @@ export default function BottomBar({ onSendMessage, onVoiceAudio }) {
     recognitionRef.current = r
   }, [onSendMessage, agentState, setAgentState])
 
-  // Canvas Waveform Animation Loop
+  // Canvas Waveform Animation Loop — 20-bar visualizer
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext('2d')
-    let frame = 0
+    const BAR_COUNT = 20
+    let time = 0
 
     const draw = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height)
-      
+
       const width = canvas.width
       const height = canvas.height
       const midY = height / 2
+      const barWidth = Math.floor(width / BAR_COUNT) - 1
+      const maxBarHeight = height * 0.7
 
-      ctx.lineWidth = 1.5
-      
-      // Determine wave properties based on state
+      // Determine colors based on state
       let color = '#5a5550' // Idle: muted grey
-      let amplitude = 2
-      let speed = 0.05
-      let numWaves = 1
+      let intensity = 0.15
 
       if (isRecording || agentState === 'listening') {
         color = '#4fd1c7' // Mic active: teal
-        amplitude = 8
-        speed = 0.15
-        numWaves = 2
+        intensity = 0.8
       } else if (agentState === 'speaking') {
         color = '#e8c97a' // TTS playing: gold
-        amplitude = 10
-        speed = 0.12
-        numWaves = 3
+        intensity = 0.9
       } else if (agentState === 'thinking') {
         color = '#e8c97a'
-        amplitude = 4
-        speed = 0.25
-        numWaves = 1
+        intensity = 0.4
       }
 
-      frame += speed
+      time += 0.06
 
-      // Draw multi-layered sine waves
-      for (let w = 0; w < numWaves; w++) {
+      // Draw 20 bars
+      for (let i = 0; i < BAR_COUNT; i++) {
+        const x = i * (barWidth + 1)
+        const freq = 0.3 + (i % 3) * 0.15
+        const phase = i * 0.5
+        const wave = Math.sin(time * freq + phase) * 0.5 + 0.5
+        const barHeight = Math.max(2, wave * maxBarHeight * intensity)
+        const alpha = 0.4 + wave * 0.6
+
+        ctx.fillStyle = color
+        ctx.globalAlpha = alpha
         ctx.beginPath()
-        ctx.strokeStyle = w === 0 ? color : `${color}55` // faded overlay waves
-        
-        const waveOffset = w * Math.PI * 0.4
-        const waveFreq = 0.08 + w * 0.02
-
-        for (let x = 0; x < width; x++) {
-          const y = midY + Math.sin(x * waveFreq + frame + waveOffset) * (amplitude * Math.sin(x * Math.PI / width))
-          if (x === 0) ctx.moveTo(x, y)
-          else ctx.lineTo(x, y)
-        }
-        ctx.stroke()
+        ctx.roundRect(x, midY - barHeight / 2, barWidth, barHeight, 1.5)
+        ctx.fill()
       }
 
+      ctx.globalAlpha = 1
       animationRef.current = requestAnimationFrame(draw)
     }
 
@@ -102,7 +96,7 @@ export default function BottomBar({ onSendMessage, onVoiceAudio }) {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       streamRef.current = stream
-      
+
       const mr = new MediaRecorder(stream)
       mr.ondataavailable = (e) => {
         if (e.data.size > 0) onVoiceAudio(e.data)
@@ -145,25 +139,25 @@ export default function BottomBar({ onSendMessage, onVoiceAudio }) {
   return (
     <div className="bottom-bar">
       {/* Voice microphone button */}
-      <button 
+      <button
         id="mic-btn"
-        className={`voice-btn ${isRecording ? 'listening' : ''}`} 
+        className={`voice-btn ${isRecording ? 'listening' : ''}`}
         onClick={toggleMic}
         title={isRecording ? 'Stop speaking' : 'Press to speak'}
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
-          <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-          <line x1="12" x2="12" y1="19" y2="22"/>
+          <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+          <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+          <line x1="12" x2="12" y1="19" y2="22" />
         </svg>
       </button>
 
       {/* Waveform Canvas */}
-      <canvas 
-        ref={canvasRef} 
-        className="waveform-canvas" 
-        width="80" 
-        height="30" 
+      <canvas
+        ref={canvasRef}
+        className="waveform-canvas"
+        width="80"
+        height="30"
       />
 
       {/* Text Input Wrapper */}
@@ -187,8 +181,8 @@ export default function BottomBar({ onSendMessage, onVoiceAudio }) {
       {/* Send Button */}
       <button id="chat-send-btn" className="send-btn" onClick={handleSend} title="Send Message">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-          <line x1="22" x2="11" y1="2" y2="13"/>
-          <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+          <line x1="22" x2="11" y1="2" y2="13" />
+          <polygon points="22 2 15 22 11 13 2 9 22 2" />
         </svg>
       </button>
     </div>
