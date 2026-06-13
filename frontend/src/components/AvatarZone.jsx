@@ -1,6 +1,7 @@
 import React, { Suspense, useRef } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import AvatarModel from '../AvatarModel'
+import { useAriaStore } from '../store/ariaStore'
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -110,13 +111,19 @@ export default function AvatarZone({
   modelId = 'female',
   isWidget = false
 }) {
+  const { character } = useAriaStore()
   const fullName = memoryData?.name || 'Endeavour'
   const firstName = fullName.split(' ')[0]
   const taskSummary = taskLog.length > 0 ? taskLog[taskLog.length - 1] : (activeTask || 'Idle')
 
+  const scale = character?.scale || 1
+  const posX = character?.posX || 0
+  const posY = character?.posY || 0
+  const showGreeting = character?.showGreeting !== false
+
   return (
     <div className="avatar-zone" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      {!isWidget && (
+      {!isWidget && showGreeting && (
         <div className="avatar-greeting">
           <h2>
             {greeting},<br />
@@ -126,7 +133,11 @@ export default function AvatarZone({
         </div>
       )}
 
-      <div className="avatar-canvas-wrap" style={{ position: 'relative', flex: 1 }}>
+      <div className="avatar-canvas-wrap" style={{
+        position: 'relative', flex: 1,
+        transform: `translate(${posX}px, ${posY}px) scale(${scale})`,
+        transformOrigin: 'center bottom',
+      }}>
         {!isWidget && (
           <button id="bubble-toggle-btn" className="bubble-toggle" onClick={onToggleBubble} title="Bubble mode">
             o
