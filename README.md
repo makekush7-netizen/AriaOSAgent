@@ -49,10 +49,6 @@ What makes ARIA different?
 
 ### 🎛 Features
 
-<p align="center">
-  <img src="./readme_assets/images/features.png" alt="ARIA Features — Activity Log with 3D companion, task tracking, and agent activity" />
-</p>
-
 #
 
 ### 🖥 ARIA Desktop
@@ -508,10 +504,6 @@ async with websockets.connect("ws://localhost:8000/ws") as ws:
 #
 
 ### 🗺 Roadmap
-
-<p align="center">
-  <img src="./readme_assets/images/roadmap.png" alt="ARIA Roadmap — Activity Log showing completed tasks, research, and automation" />
-</p>
 
 **Phase 1 — MVP (Current)**
 - [x] Core agent with WebSocket communication
