@@ -509,6 +509,10 @@ async with websockets.connect("ws://localhost:8000/ws") as ws:
 
 ### 🗺 Roadmap
 
+<p align="center">
+  <img src="./readme_assets/images/roadmap.png" alt="ARIA Roadmap — Activity Log showing completed tasks, research, and automation" />
+</p>
+
 **Phase 1 — MVP (Current)**
 - [x] Core agent with WebSocket communication
 - [x] Browser agent with DOM overlay + Vision fallback
