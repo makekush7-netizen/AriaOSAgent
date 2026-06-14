@@ -49,6 +49,10 @@ What makes ARIA different?
 
 ### 🎛 Features
 
+<p align="center">
+  <img src="./readme_assets/images/features.png" alt="ARIA Features — Activity Log with 3D companion, task tracking, and agent activity" />
+</p>
+
 #
 
 ### 🖥 ARIA Desktop
