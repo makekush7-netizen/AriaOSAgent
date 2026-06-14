@@ -22,7 +22,13 @@
 
 # ARIA — Your Personal AI Proxy That Lives on Your Desktop (Open-Source Alternative to UiPath, Rabbit R1, Claude Computer Use)
 
-**[Website](https://ariaos.me)** · **[Live Demo](https://aria-os-website.vercel.app)** · **[GitHub](https://github.com/makekush7-netizen/AriaOSAgent)**
+**[Website](https://www.ariaos.me)** · **[Website (ariaos.me)](https://ariaos.me)** · **[Live Demo](https://aria-os-website.vercel.app)** · **[GitHub](https://github.com/makekush7-netizen/AriaOSAgent)**
+
+🌐 **Links:**
+- **Main Website:** [https://www.ariaos.me](https://www.ariaos.me)
+- **Website:** [https://ariaos.me](https://ariaos.me)
+- **Live Demo:** [https://aria-os-website.vercel.app](https://aria-os-website.vercel.app)
+- **GitHub:** [https://github.com/makekush7-netizen/AriaOSAgent](https://github.com/makekush7-netizen/AriaOSAgent)
 
 ARIA (Agentic RPA Interface Assistant) is a downloadable desktop application with a 3D animated VRM companion that understands natural language commands and autonomously executes complex multi-step computer tasks — browsing websites, filling forms, sending bulk emails, generating certificates, and conducting deep research — using your own accounts and identity.
 
