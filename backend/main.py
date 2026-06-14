@@ -7,7 +7,7 @@ import json
 import re
 import uuid
 import time
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel
@@ -41,6 +41,21 @@ try:
 except Exception as _res_err:
     print(f"[ARIA] research import failed: {_res_err}")
     research_agent = None
+
+try:
+    from automation_engine import (
+        detect_columns,
+        draft_email_with_gemini,
+        build_default_email_template,
+        generate_certificates_batch,
+        send_emails_batch,
+        UPLOADS_DIR,
+        OUTPUT_DIR as AUTO_OUTPUT_DIR,
+    )
+    AUTOMATION_AVAILABLE = True
+except Exception as _auto_err:
+    print(f"[ARIA] automation_engine import failed: {_auto_err}")
+    AUTOMATION_AVAILABLE = False
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Cartesia TTS configuration
@@ -1016,6 +1031,143 @@ async def websocket_endpoint(websocket: WebSocket):
                 current_task.cancel()
         except Exception:
             pass
+
+# ── Automation Studio Endpoints ───────────────────────────────────────────────
+
+@app.post("/api/automation/upload-csv")
+async def upload_csv(file: UploadFile = File(...)):
+    """Upload CSV, detect column roles, return header map + 5-row preview."""
+    if not AUTOMATION_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Automation engine not available")
+    csv_bytes = await file.read()
+    # Save for later use
+    save_path = UPLOADS_DIR / file.filename
+    save_path.write_bytes(csv_bytes)
+    result = detect_columns(csv_bytes)
+    result["saved_path"] = str(save_path)
+    return result
+
+
+@app.post("/api/automation/upload-template")
+async def upload_template(file: UploadFile = File(...)):
+    """Upload certificate template image, return its served URL."""
+    allowed_exts = {".png", ".jpg", ".jpeg"}
+    suffix = Path(file.filename).suffix.lower()
+    if suffix not in allowed_exts:
+        raise HTTPException(status_code=400, detail="Only PNG/JPG templates allowed")
+    save_path = UPLOADS_DIR / file.filename
+    save_path.write_bytes(await file.read())
+    return {"saved_path": str(save_path), "url": f"/api/automation/template/{file.filename}"}
+
+
+@app.get("/api/automation/template/{filename}")
+async def serve_template(filename: str):
+    """Serve uploaded template image."""
+    if ".." in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    path = UPLOADS_DIR / filename
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Template not found")
+    import mimetypes
+    mime, _ = mimetypes.guess_type(str(path))
+    return Response(content=path.read_bytes(), media_type=mime or "image/png")
+
+
+class DraftEmailRequest(BaseModel):
+    detected_cols: dict
+    event_name: str = "our event"
+    tone: str = "professional"
+
+@app.post("/api/automation/draft-email")
+async def draft_email(req: DraftEmailRequest):
+    """Use Gemini to draft an HTML email template from detected CSV columns."""
+    if not AUTOMATION_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Automation engine not available")
+    # Try to get Gemini client
+    gemini_client = None
+    try:
+        api_key = os.getenv("GEMINI_API_KEY", "").strip()
+        if api_key:
+            from google import genai as _genai
+            gemini_client = _genai.Client(api_key=api_key)
+    except Exception:
+        pass
+    html = await draft_email_with_gemini(
+        req.detected_cols, req.event_name, req.tone, gemini_client
+    )
+    return {"html": html}
+
+
+class GenerateCertsRequest(BaseModel):
+    csv_path: str
+    template_path: str
+    layout: dict
+    output_dir: str = ""
+
+@app.post("/api/automation/generate-certs")
+async def generate_certs(req: GenerateCertsRequest, websocket_id: str = ""):
+    """Batch-generate PDF certificates from CSV + template image + layout JSON."""
+    if not AUTOMATION_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Automation engine not available")
+    csv_path = Path(req.csv_path)
+    if not csv_path.exists():
+        raise HTTPException(status_code=404, detail=f"CSV not found: {req.csv_path}")
+    csv_bytes = csv_path.read_bytes()
+
+    # Find the active websocket to stream progress (first connected client)
+    ws = manager.active_connections[0] if manager.active_connections else None
+
+    out_dir = req.output_dir or str(AUTO_OUTPUT_DIR / "certificates")
+    result = await generate_certificates_batch(
+        csv_bytes=csv_bytes,
+        template_img_path=req.template_path,
+        layout=req.layout,
+        output_dir=out_dir,
+        websocket=ws,
+    )
+    return {"result": result, "output_dir": out_dir}
+
+
+class SendEmailsRequest(BaseModel):
+    csv_path: str
+    subject: str
+    html_template: str
+    certs_base_dir: str = ""
+    smtp_sender: str = ""
+    smtp_password: str = ""
+    name_col: str = "Member Name"
+    team_col: str = "Team Name"
+    email_col: str = "Email"
+
+@app.post("/api/automation/send-emails")
+async def send_emails_endpoint(req: SendEmailsRequest):
+    """Batch send personalised emails (with cert attachments if available)."""
+    if not AUTOMATION_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Automation engine not available")
+    csv_path = Path(req.csv_path)
+    if not csv_path.exists():
+        raise HTTPException(status_code=404, detail=f"CSV not found: {req.csv_path}")
+    csv_bytes = csv_path.read_bytes()
+
+    smtp_cfg = None
+    if req.smtp_sender and req.smtp_password:
+        smtp_cfg = {"sender": req.smtp_sender, "password": req.smtp_password}
+
+    ws = manager.active_connections[0] if manager.active_connections else None
+
+    result = await send_emails_batch(
+        csv_bytes=csv_bytes,
+        subject=req.subject,
+        html_template=req.html_template,
+        certs_base_dir=req.certs_base_dir or None,
+        smtp_cfg=smtp_cfg,
+        name_col=req.name_col,
+        team_col=req.team_col,
+        email_col=req.email_col,
+        websocket=ws,
+    )
+    return {"result": result}
+
 
 if __name__ == "__main__":
     import uvicorn

@@ -16,7 +16,7 @@ import CompletionCard from './components/CompletionCard'
 import SettingsPanel from './components/SettingsPanel'
 import { useAriaStore } from './store/ariaStore'
 
-const API_BASE = 'http://localhost:8000'
+const API_BASE = 'http://localhost:8001'
 
 const getGreeting = () => {
   const h = new Date().getHours()
@@ -233,7 +233,7 @@ export default function App() {
   useEffect(() => {
     const connect = () => {
       try {
-        const ws = new WebSocket('ws://localhost:8000/ws')
+        const ws = new WebSocket('ws://localhost:8001/ws')
         wsRef.current = ws
         ws.onopen = () => console.log('[ARIA] WS connected')
         ws.onmessage = (e) => {
